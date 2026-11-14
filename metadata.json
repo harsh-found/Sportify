@@ -1,0 +1,5 @@
+{
+  "name": "Sportify Live Sports Gateway",
+  "description": "Enterprise-grade live sports catalog and streaming gateway federating 6 Indian sports providers with automated ClearKey DRM decryption, dynamic quality filtering (DASH/HLS), resilient circuit breaking, and sub-millisecond edge caching.",
+  "requestFramePermissions": []
+}

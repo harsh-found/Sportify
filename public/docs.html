@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sportify API Documentation — v1.0.0 Developer Reference & Console</title>
+  <meta name="description" content="Official v1.0.0 API Reference, Architecture Guide, JSON Schemas, and Interactive Explorer for the Sportify Live Sports & Stream Aggregation Platform.">
+  <meta property="og:title" content="Sportify API Documentation — v1.0.0 Developer Reference">
+  <meta property="og:description" content="Complete endpoint reference, CS3 provider extraction architecture, event reconciliation engine, and interactive API console.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Plus Jakarta Sans", "system-ui", "-apple-system", "sans-serif"],
+            mono: ["JetBrains Mono", "ui-monospace", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      background-color: #0E0E10;
+      color: #F4F4F5;
+      font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0E0E10;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #27272A;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #3F3F46;
+    }
+    /* Swagger UI Dark Override */
+    .swagger-ui { color: #E4E4E7; font-family: "Plus Jakarta Sans", sans-serif; }
+    .swagger-ui .topbar { display: none; }
+    .swagger-ui .info { margin: 16px 0; }
+    .swagger-ui .info .title, .swagger-ui .opblock-tag { color: #FAFAFA !important; }
+    .swagger-ui .info p, .swagger-ui .info li { color: #A1A1AA !important; }
+    .swagger-ui .scheme-container { background: #151518 !important; box-shadow: none !important; border: 1px solid #27272A; border-radius: 8px; }
+    .swagger-ui .opblock { background: #151518 !important; border-color: #27272A !important; border-radius: 8px !important; }
+    .swagger-ui .opblock .opblock-summary-path { color: #F4F4F5 !important; font-family: "JetBrains Mono", monospace !important; }
+    .swagger-ui .opblock .opblock-summary-description { color: #A1A1AA !important; }
+    .swagger-ui .opblock .opblock-section-header { background: #1C1C21 !important; }
+    .swagger-ui table thead tr td, .swagger-ui table thead tr th, .swagger-ui .parameter__name, .swagger-ui .parameter__type { color: #E4E4E7 !important; }
+    .swagger-ui input[type=text], .swagger-ui select, .swagger-ui textarea { background: #0E0E10 !important; color: #FAFAFA !important; border: 1px solid #3F3F46 !important; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-[#0E0E10] text-[#F4F4F5] selection:bg-zinc-700 selection:text-white">
+
+  <!-- 3-Zone Top Header Bar -->
+  <header class="sticky top-0 z-40 h-14 bg-[#0E0E10]/95 backdrop-blur-md border-b border-[#27272A] px-4 lg:px-6 flex items-center justify-between gap-4">
+    <!-- Zone 1: Brand & Release Identity -->
+    <div class="flex items-center gap-3 shrink-0">
+      <a href="/" class="flex items-center gap-2.5 group">
+        <div class="w-8 h-8 rounded bg-[#1C1C21] border border-[#27272A] flex items-center justify-center text-zinc-200 group-hover:border-zinc-400 transition">
+          <i class="ph ph-broadcast text-base"></i>
+        </div>
+        <span class="text-sm font-bold tracking-tight text-white">Sportify API</span>
+      </a>
+      <span class="text-[#3F3F46]">/</span>
+      <span class="font-mono text-xs text-zinc-300 tabular-nums">v1.0.0</span>
+      <span class="hidden sm:inline-block font-mono text-[11px] text-emerald-400 uppercase tracking-wider ml-1">Production Release</span>
+    </div>
+
+    <!-- Zone 2: Quick Documentation Search -->
+    <div class="flex-1 max-w-md">
+      <div class="relative flex items-center">
+        <i class="ph ph-magnifying-glass absolute left-3 text-zinc-500 text-xs"></i>
+        <input
+          id="docs-search-input"
+          type="text"
+          placeholder="Filter endpoints, resources, parameters (e.g. matches, teams)..."
+          oninput="filterEndpoints(this.value)"
+          class="w-full pl-8 pr-14 py-1.5 bg-[#151518] border border-[#27272A] rounded text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-400 transition font-sans"
+        >
+        <kbd class="hidden sm:inline-block absolute right-2.5 font-mono text-[10px] text-zinc-500">/api</kbd>
+      </div>
+    </div>
+
+    <!-- Zone 3: Navigation & OpenAPI Spec Action -->
+    <div class="flex items-center gap-2.5 shrink-0">
+      <a href="/portal" class="px-2.5 py-1.5 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-xs font-medium text-zinc-200 transition flex items-center gap-1.5">
+        <i class="ph ph-television text-xs"></i>
+        <span class="hidden md:inline">Sports Portal</span>
+      </a>
+      <a href="/api/openapi.json" target="_blank" class="px-2.5 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition flex items-center gap-1.5 font-mono">
+        <i class="ph ph-file-code text-xs"></i>
+        <span>openapi.json</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Workspace Layout: Left Sidebar + Center Documentation & Console -->
+  <div class="flex-1 max-w-[1440px] w-full mx-auto flex flex-col lg:flex-row">
+
+    <!-- Left Navigation Sidebar -->
+    <aside class="w-full lg:w-64 shrink-0 border-b lg:border-b-0 lg:border-r border-[#27272A] bg-[#121215] lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] overflow-y-auto custom-scrollbar p-4 space-y-6">
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Platform Architecture</div>
+        <nav class="space-y-1 text-xs">
+          <a href="#section-overview" class="block px-2.5 py-1.5 rounded text-zinc-200 hover:bg-[#1C1C21] transition">System Overview &amp; Pipeline</a>
+          <a href="#section-providers" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">6 CS3 Providers &amp; Ciphers</a>
+          <a href="#section-intelligence" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">Event Identity &amp; Deduplication</a>
+          <a href="#section-conventions" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">Filtering, Pagination &amp; Errors</a>
+        </nav>
+      </div>
+
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Interactive Tools</div>
+        <nav class="space-y-1 text-xs">
+          <a href="#section-explorer" class="block px-2.5 py-1.5 rounded text-zinc-200 font-medium bg-[#1C1C21] border border-[#27272A]">Live API Request Console</a>
+          <a href="#section-endpoints" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">Complete Endpoint Reference</a>
+          <a href="#section-schemas" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">JSON Schemas &amp; Contracts</a>
+          <a href="#section-integrations" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">SDK &amp; Code Examples</a>
+          <a href="#section-swagger" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">OpenAPI 3.1 Inspector</a>
+        </nav>
+      </div>
+
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Resource Groups</div>
+        <nav class="space-y-1 text-xs font-mono">
+          <button onclick="filterEndpoints('sports')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/sports</button>
+          <button onclick="filterEndpoints('matches')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/matches</button>
+          <button onclick="filterEndpoints('tournaments')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/tournaments</button>
+          <button onclick="filterEndpoints('teams')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/teams</button>
+          <button onclick="filterEndpoints('channels')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/channels</button>
+          <button onclick="filterEndpoints('broadcasters')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/broadcasters</button>
+          <button onclick="filterEndpoints('providers')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/providers</button>
+          <button onclick="filterEndpoints('stream')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/stream/:key</button>
+          <button onclick="filterEndpoints('search')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/search &amp; /api/stats</button>
+          <button onclick="filterEndpoints('')" class="w-full text-left px-2.5 py-1 rounded text-zinc-500 hover:text-zinc-200 transition font-sans">Show All Endpoints</button>
+        </nav>
+      </div>
+    </aside>
+
+    <!-- Main Content Column -->
+    <main class="flex-1 p-5 sm:p-8 lg:p-10 space-y-12 overflow-x-hidden">
+
+      <!-- 1. System Overview & Telemetry Strip -->
+      <section id="section-overview" class="space-y-6 border-b border-[#27272A] pb-10">
+        <div class="space-y-2 max-w-3xl">
+          <div class="font-mono text-xs text-zinc-400 uppercase tracking-wider">Sportify Platform Documentation &bull; Release v1.0.0</div>
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+            Federated Live Sports &amp; Stream Aggregation Engine
+          </h1>
+          <p class="text-sm text-zinc-400 leading-relaxed">
+            Sportify <code class="font-mono text-zinc-200">v1.0.0</code> is a high-availability sports data and stream aggregation API built on Bun and Hono. It queries six reverse-engineered CloudStream3 (CS3) providers concurrently, decrypts upstream payloads in memory, reconciles inconsistent event titles into order-independent canonical fixtures, deduplicates multi-provider streams without losing ClearKey DRM or HTTP header provenance, and serves sub-millisecond cached responses.
+          </p>
+        </div>
+
+        <!-- Live Platform Telemetry Bar -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A]">
+            <div class="text-xs text-zinc-400">Release Version</div>
+            <div class="text-xl font-bold text-white font-mono tabular-nums mt-1">v1.0.0</div>
+            <div class="text-[11px] text-zinc-500 font-mono mt-0.5">OpenAPI 3.1.0 Contract</div>
+          </div>
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A]">
+            <div class="text-xs text-zinc-400">CS3 Providers Online</div>
+            <div id="doc-stat-providers" class="text-xl font-bold text-emerald-400 font-mono tabular-nums mt-1">6 / 6</div>
+            <div class="text-[11px] text-zinc-500 font-mono mt-0.5">Circuit Breakers CLOSED</div>
+          </div>
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A]">
+            <div class="text-xs text-zinc-400">Active Fixtures</div>
+            <div id="doc-stat-fixtures" class="text-xl font-bold text-white font-mono tabular-nums mt-1">--</div>
+            <div id="doc-stat-live" class="text-[11px] text-zinc-500 font-mono tabular-nums mt-0.5">Syncing catalog...</div>
+          </div>
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A]">
+            <div class="text-xs text-zinc-400">Cached P95 Latency</div>
+            <div class="text-xl font-bold text-white font-mono tabular-nums mt-1">&lt; 1.2 ms</div>
+            <div class="text-[11px] text-zinc-500 font-mono mt-0.5">LRU + Singleflight Coalescing</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Interactive API Request Console -->
+      <section id="section-explorer" class="space-y-4 border-b border-[#27272A] pb-10">
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white">Interactive API Request Console</h2>
+            <p class="text-xs text-zinc-400">Test any <code class="font-mono text-zinc-200">v1.0.0</code> endpoint against the live engine and inspect headers, latency, and JSON payloads.</p>
+          </div>
+          <div class="flex flex-wrap gap-1.5 font-mono text-[11px]">
+            <button onclick="loadConsolePreset('/api/stats')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/stats</button>
+            <button onclick="loadConsolePreset('/api/matches?phase=live&limit=5')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/matches?phase=live</button>
+            <button onclick="loadConsolePreset('/api/tournaments?sport=cricket')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/tournaments</button>
+            <button onclick="loadConsolePreset('/api/teams/IND')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/teams/IND</button>
+            <button onclick="loadConsolePreset('/api/broadcasters')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/broadcasters</button>
+            <button onclick="loadConsolePreset('/api/providers')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/providers</button>
+            <button onclick="loadConsolePreset('/api/search?q=cricket')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/search?q=cricket</button>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-[#27272A] bg-[#151518] overflow-hidden">
+          <div class="p-3 bg-[#1C1C21] border-b border-[#27272A] flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div class="flex items-center flex-1 bg-[#0E0E10] border border-[#27272A] rounded px-3 py-1.5">
+              <span class="font-mono text-xs font-bold text-emerald-400 mr-3">GET</span>
+              <input
+                id="console-path-input"
+                type="text"
+                value="/api/stats"
+                class="w-full bg-transparent font-mono text-xs text-white focus:outline-none"
+              >
+            </div>
+            <button
+              onclick="runConsoleRequest()"
+              class="px-4 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition shrink-0"
+            >
+              Execute Request
+            </button>
+          </div>
+
+          <div class="px-4 py-2 border-b border-[#27272A] flex items-center justify-between text-xs font-mono text-zinc-400 tabular-nums">
+            <div class="flex items-center gap-4">
+              <span>Status: <strong id="console-status" class="text-emerald-400">200 OK</strong></span>
+              <span>Edge Latency: <strong id="console-latency" class="text-zinc-200">-- ms</strong></span>
+              <span>Payload: <strong id="console-size" class="text-zinc-200">-- KB</strong></span>
+            </div>
+            <button onclick="copyConsoleOutput()" class="text-zinc-400 hover:text-white transition">Copy JSON</button>
+          </div>
+
+          <pre id="console-json-output" class="p-4 font-mono text-xs text-zinc-300 overflow-x-auto max-h-[380px] custom-scrollbar leading-relaxed">Loading /api/stats...</pre>
+        </div>
+      </section>
+
+      <!-- 3. Complete Endpoint Reference -->
+      <section id="section-endpoints" class="space-y-6 border-b border-[#27272A] pb-10">
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <h2 class="text-lg font-bold text-white">Complete v1.0.0 Endpoint Reference</h2>
+            <p class="text-xs text-zinc-400">Resource-oriented REST architecture covering sports, matches, tournaments, teams, channels, broadcasters, providers, streams, search, and telemetry.</p>
+          </div>
+          <div id="endpoints-count-label" class="font-mono text-xs text-zinc-400 tabular-nums">24 Endpoints Active</div>
+        </div>
+
+        <div id="endpoints-list-container" class="space-y-3">
+          <!-- Populated dynamically from ENDPOINT_CATALOG -->
+        </div>
+      </section>
+
+      <!-- 4. Six CS3 Providers & Cryptographic Extraction Matrix -->
+      <section id="section-providers" class="space-y-4 border-b border-[#27272A] pb-10">
+        <div>
+          <h2 class="text-lg font-bold text-white">Six CS3 Providers &amp; Cryptographic Extraction Matrix</h2>
+          <p class="text-xs text-zinc-400">Every provider adapter is verified directly against its original Kotlin source and compiled <code class="font-mono text-zinc-200">classes.dex</code> Dalvik bytecode.</p>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg border border-[#27272A] bg-[#151518]">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-[#27272A] bg-[#1C1C21] text-zinc-400 font-mono uppercase text-[11px]">
+                <th class="py-3 px-4">Provider ID</th>
+                <th class="py-3 px-4">Firebase Project / App Package</th>
+                <th class="py-3 px-4">Cipher &amp; Key Derivation</th>
+                <th class="py-3 px-4">Upstream Endpoints</th>
+                <th class="py-3 px-4 text-right">Trust Score</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[#27272A]">
+              <tr>
+                <td class="py-3 px-4 font-mono font-semibold text-white">cricify</td>
+                <td class="py-3 px-4 font-mono text-zinc-400 tabular-nums">963020218535 &bull; com.cricfy.tv</td>
+                <td class="py-3 px-4 font-mono text-zinc-300">Primary / Dex-Secondary AES-128-CBC + EnvelopeCrypto</td>
+                <td class="py-3 px-4 font-mono text-zinc-400">/cats.txt, /categories/live-events.txt, /channels/*.txt</td>
+                <td class="py-3 px-4 font-mono text-right text-emerald-400 tabular-nums">96 / 100</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-mono font-semibold text-white">sportzx</td>
+                <td class="py-3 px-4 font-mono text-zinc-400 tabular-nums">234785582029 &bull; com.sportzxtv.app</td>
+                <td class="py-3 px-4 font-mono text-zinc-300">SXR3 ChaCha20-Variant Sponge + 128-bit MAC Tag / AES-128-CBC</td>
+                <td class="py-3 px-4 font-mono text-zinc-400">/events.json, /channels/{id}.json</td>
+                <td class="py-3 px-4 font-mono text-right text-emerald-400 tabular-nums">94 / 100</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-mono font-semibold text-white">sktech</td>
+                <td class="py-3 px-4 font-mono text-zinc-400 tabular-nums">330162934410 &bull; com.live.sktechtv</td>
+                <td class="py-3 px-4 font-mono text-zinc-300">256-Byte Lookup Table D + V23 Substitution + 64-Char Header AES</td>
+                <td class="py-3 px-4 font-mono text-zinc-400">/events.txt, /cats.txt, /channels/{id}.txt</td>
+                <td class="py-3 px-4 font-mono text-right text-emerald-400 tabular-nums">92 / 100</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-mono font-semibold text-white">playztv</td>
+                <td class="py-3 px-4 font-mono text-zinc-400 tabular-nums">516859456626 &bull; com.playztv.app</td>
+                <td class="py-3 px-4 font-mono text-zinc-300">Reverse Bytes + Adjacent Byte-Pair Swap + AES-128-CBC</td>
+                <td class="py-3 px-4 font-mono text-zinc-400">/events.txt, /categories.txt, /channels/{id}.txt</td>
+                <td class="py-3 px-4 font-mono text-right text-emerald-400 tabular-nums">91 / 100</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-mono font-semibold text-white">livxow</td>
+                <td class="py-3 px-4 font-mono text-zinc-400 tabular-nums">459539398637 &bull; com.livxow.app</td>
+                <td class="py-3 px-4 font-mono text-zinc-300">Substitution Cipher + Base64url pro/*.txt + AES-128-CBC</td>
+                <td class="py-3 px-4 font-mono text-zinc-400">/events.txt, /cats.txt, /pro/{b64url}.txt</td>
+                <td class="py-3 px-4 font-mono text-right text-emerald-400 tabular-nums">89 / 100</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-mono font-semibold text-white">playfy</td>
+                <td class="py-3 px-4 font-mono text-zinc-400 tabular-nums">239487160038 &bull; com.playfytv.app</td>
+                <td class="py-3 px-4 font-mono text-zinc-300">32-bit FNV-1a Key/IV Derivation (0x811c9dc5) + AES-128-CBC</td>
+                <td class="py-3 px-4 font-mono text-zinc-400">/cats/live-events.json, /cc.json, /channels/{id}.json</td>
+                <td class="py-3 px-4 font-mono text-right text-emerald-400 tabular-nums">87 / 100</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 5. Event Identity, Franchise Inference & Stream Deduplication -->
+      <section id="section-intelligence" class="space-y-4 border-b border-[#27272A] pb-10">
+        <h2 class="text-lg font-bold text-white">Event Identity, Franchise Inference &amp; Stream Deduplication</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A] space-y-2">
+            <div class="font-mono text-xs font-semibold text-white">1. Order-Independent Reconciliation</div>
+            <p class="text-xs text-zinc-400 leading-relaxed">
+              Titles such as <code class="font-mono text-zinc-200">New Zealand vs India</code>, <code class="font-mono text-zinc-200">IND vs NZ</code>, and <code class="font-mono text-zinc-200">NZ vs IN</code> resolve to the same canonical key <code class="font-mono text-zinc-200">cricket::ind-vs-nz::YYYY-MM-DD</code>. Distinct match numbers (<code class="font-mono text-zinc-200">1st ODI</code> vs <code class="font-mono text-zinc-200">2nd ODI</code>), genders (<code class="font-mono text-zinc-200">INDW</code> vs <code class="font-mono text-zinc-200">IND</code>), and age groups (<code class="font-mono text-zinc-200">INDU19</code>) never falsely merge.
+            </p>
+          </div>
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A] space-y-2">
+            <div class="font-mono text-xs font-semibold text-white">2. Franchise-to-League Inference</div>
+            <p class="text-xs text-zinc-400 leading-relaxed">
+              When an upstream title omits the competition name (e.g. <code class="font-mono text-zinc-200">Adelaide Strikers Women vs Sydney Sixers Women</code> or <code class="font-mono text-zinc-200">CSK vs MI</code>), the entity engine infers the parent tournament (<code class="font-mono text-zinc-200">Women's Big Bash League (WBBL)</code> or <code class="font-mono text-zinc-200">Indian Premier League (IPL)</code>) from the participating franchises.
+            </p>
+          </div>
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A] space-y-2">
+            <div class="font-mono text-xs font-semibold text-white">3. Lossless Stream Deduplication</div>
+            <p class="text-xs text-zinc-400 leading-relaxed">
+              Stream URLs are normalized by stripping ephemeral cache-buster query tokens while preserving signed CDN tokens. When multiple providers serve the same stream, Sportify coalesces them into a single <code class="font-mono text-zinc-200">RichStreamFeed</code>, merges ClearKey DRM keys and HTTP headers, and records full multi-provider attribution.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. Filtering, Pagination & Error Conventions -->
+      <section id="section-conventions" class="space-y-4 border-b border-[#27272A] pb-10">
+        <h2 class="text-lg font-bold text-white">Filtering, Pagination &amp; Error Structure</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A] space-y-2">
+            <div class="font-mono text-xs font-semibold text-white">Query Parameters Across Collection Endpoints</div>
+            <ul class="text-xs text-zinc-400 space-y-1.5 font-mono">
+              <li><span class="text-zinc-200">sport</span>: cricket, football, motorsport, tennis, mma, wwe, kabaddi, basketball</li>
+              <li><span class="text-zinc-200">phase</span>: live | upcoming | ended | all</li>
+              <li><span class="text-zinc-200">tournament</span>: Tournament ID or shortName (e.g. tourn_ipl, wbbl, ucl)</li>
+              <li><span class="text-zinc-200">team</span>: Canonical team code or alias (e.g. IND, NZ, CSK, STRW)</li>
+              <li><span class="text-zinc-200">provider</span>: cricify | sportzx | playztv | playfy | sktech | livxow</li>
+              <li><span class="text-zinc-200">page &amp; limit</span>: 1-indexed pagination (default limit=50, max=250)</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A] space-y-2">
+            <div class="font-mono text-xs font-semibold text-white">Standardized Error Response Envelope</div>
+            <pre class="font-mono text-xs text-zinc-300 bg-[#0E0E10] p-3 rounded border border-[#27272A] overflow-x-auto">{
+  "success": false,
+  "version": "1.0.0",
+  "error": {
+    "code": "MATCH_NOT_FOUND",
+    "message": "No match or fixture found matching identifier 'invalid_id'"
+  }
+}</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. JSON Schemas & Contracts -->
+      <section id="section-schemas" class="space-y-4 border-b border-[#27272A] pb-10">
+        <h2 class="text-lg font-bold text-white">Core JSON Response Schemas</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="rounded-lg bg-[#151518] border border-[#27272A] overflow-hidden">
+            <div class="px-4 py-2.5 bg-[#1C1C21] border-b border-[#27272A] font-mono text-xs font-semibold text-white">
+              CatalogFixture (Match / Event Resource)
+            </div>
+            <pre class="p-4 font-mono text-xs text-zinc-300 overflow-x-auto leading-relaxed">{
+  "fixtureId": "fix_9f81c2e04a1b",
+  "canonicalKey": "cricket::ind-vs-nz::2026-11-14",
+  "kind": "match",
+  "sport": "cricket",
+  "title": "India vs New Zealand",
+  "matchFormat": "T20I",
+  "matchStage": null,
+  "eventConfidence": 0.98,
+  "tournament": {
+    "id": "tourn_t20wc",
+    "name": "ICC T20 World Cup",
+    "shortName": "T20 WC",
+    "category": "ICC International"
+  },
+  "teams": {
+    "teamA": { "id": "team_ind", "name": "India", "code": "IND", "gender": "men", "ageGroup": "senior" },
+    "teamB": { "id": "team_nz", "name": "New Zealand", "code": "NZ", "gender": "men", "ageGroup": "senior" }
+  },
+  "schedule": {
+    "status": "live",
+    "isLive": true,
+    "startTimeUtc": "2026-11-14T13:30:00.000Z"
+  },
+  "streamMetadata": {
+    "totalWorkingFeeds": 4,
+    "availableLanguages": ["eng", "hin"],
+    "maxResolution": "1080p FHD",
+    "hasDrmFeeds": true,
+    "primaryBroadcasters": ["Star Sports Network", "Willow TV"]
+  },
+  "providerPointers": {
+    "cricify": "cricify_ev_102",
+    "sportzx": "sportzx_ev_44"
+  }
+}</pre>
+          </div>
+
+          <div class="rounded-lg bg-[#151518] border border-[#27272A] overflow-hidden">
+            <div class="px-4 py-2.5 bg-[#1C1C21] border-b border-[#27272A] font-mono text-xs font-semibold text-white">
+              RichStreamFeed (Deduplicated Stream + Provenance)
+            </div>
+            <pre class="p-4 font-mono text-xs text-zinc-300 overflow-x-auto leading-relaxed">{
+  "streamId": "str_4b81d9f012a4",
+  "channelName": "Star Sports 1 HD",
+  "channelGroup": "Star Sports Network",
+  "priorityTier": "primary",
+  "reliabilityScore": 98,
+  "language": { "code": "eng", "name": "English", "badge": "ENG" },
+  "protocol": "dash",
+  "drm": {
+    "type": "clearkey",
+    "clearKeys": [
+      { "kid": "1994b1df7dfd2e8a8d7b9bf3fb900285", "key": "22a1444b3da18e139191665b3d652835" }
+    ]
+  },
+  "provenance": {
+    "isMultiSource": true,
+    "primaryProvider": "cricify",
+    "mirroredProviders": ["sportzx"],
+    "attributionBadge": "Multi-Source (Cricify Live + 1 Mirror)"
+  },
+  "network": {
+    "masterPlaylistUrl": "https://cdn.example.net/live/master.mpd",
+    "edgeProxyFallbackUrl": "http://localhost:3000/api/proxy?url=..."
+  },
+  "hasPreParsedRenditions": true
+}</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8. Integration Code Snippets -->
+      <section id="section-integrations" class="space-y-4 border-b border-[#27272A] pb-10">
+        <h2 class="text-lg font-bold text-white">Client Integration Examples</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="rounded-lg bg-[#151518] border border-[#27272A] overflow-hidden">
+            <div class="px-4 py-2 bg-[#1C1C21] border-b border-[#27272A] font-mono text-xs text-zinc-300">TypeScript / Fetch SDK</div>
+            <pre class="p-4 font-mono text-xs text-zinc-300 overflow-x-auto">const res = await fetch("http://localhost:3000/api/matches/live?sport=cricket");
+const { matches } = await res.json();
+
+if (matches.length > 0) {
+  const key = encodeURIComponent(matches[0].canonicalKey);
+  const streamRes = await fetch(`http://localhost:3000/api/stream/${key}?probe=true`);
+  const { feeds } = await streamRes.json();
+  console.log("Primary Playable URL:", feeds[0]?.network.edgeProxyFallbackUrl);
+}</pre>
+          </div>
+          <div class="rounded-lg bg-[#151518] border border-[#27272A] overflow-hidden">
+            <div class="px-4 py-2 bg-[#1C1C21] border-b border-[#27272A] font-mono text-xs text-zinc-300">cURL &amp; jq CLI</div>
+            <pre class="p-4 font-mono text-xs text-zinc-300 overflow-x-auto"># Query live cricket matches involving India
+curl -s "http://localhost:3000/api/matches?sport=cricket&team=IND" | jq '.matches[] | {title, canonicalKey, schedule}'
+
+# Cross-resource unified search
+curl -s "http://localhost:3000/api/search?q=WBBL" | jq '.tournaments, .matches'</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- 9. Embedded OpenAPI 3.1 / SwaggerUIBundle Inspector -->
+      <section id="section-swagger" class="space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-white">OpenAPI 3.1 Specification Inspector</h2>
+            <p class="text-xs text-zinc-400">Powered by <code class="font-mono text-zinc-200">/api/openapi.json</code> and SwaggerUIBundle.</p>
+          </div>
+        </div>
+        <div id="swagger-ui" class="rounded-lg border border-[#27272A] bg-[#121215] p-2"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+  <script>
+    const ENDPOINT_CATALOG = [
+      { group: "sports", method: "GET", path: "/api/sports", summary: "List all active sports with total, live, and upcoming fixture counts and tournament counts." },
+      { group: "sports", method: "GET", path: "/api/sports/:sport", summary: "Detailed sport breakdown including active tournaments, participating teams, and fixtures.", sample: "/api/sports/cricket" },
+      { group: "matches", method: "GET", path: "/api/matches", summary: "Query normalized matches and events with filtering by sport, phase, tournament, team, provider, language, DRM, sort, and pagination.", sample: "/api/matches?sport=cricket&limit=10" },
+      { group: "matches", method: "GET", path: "/api/matches/live", summary: "Dedicated endpoint returning all currently live matches across all 6 CS3 providers.", sample: "/api/matches/live" },
+      { group: "matches", method: "GET", path: "/api/matches/upcoming", summary: "Dedicated endpoint returning scheduled upcoming fixtures.", sample: "/api/matches/upcoming" },
+      { group: "matches", method: "GET", path: "/api/matches/:matchId", summary: "Retrieve complete match details and resolved multi-provider stream feeds by fixtureId or canonicalKey." },
+      { group: "matches", method: "GET", path: "/api/catalog", summary: "Unified sports catalog (matches and tournament broadcasts) with order-independent canonical keys.", sample: "/api/catalog" },
+      { group: "matches", method: "GET", path: "/api/catalog/:sport", summary: "Filter unified sports catalog by sport slug.", sample: "/api/catalog/cricket" },
+      { group: "tournaments", method: "GET", path: "/api/tournaments", summary: "List all tournaments and competitions (IPL, WBBL, BBL, WPL, PSL, UCL, EPL, F1) with fixture and team counts.", sample: "/api/tournaments" },
+      { group: "tournaments", method: "GET", path: "/api/tournaments/:tournamentId", summary: "Get tournament metadata, participating teams, and fixtures by tournament ID or shortName (e.g. tourn_ipl, wbbl).", sample: "/api/tournaments/tourn_wbbl" },
+      { group: "teams", method: "GET", path: "/api/teams", summary: "List canonical teams with gender, ageGroup, franchise leagueId, aliases, and match counts.", sample: "/api/teams?sport=cricket&limit=25" },
+      { group: "teams", method: "GET", path: "/api/teams/:teamCode", summary: "Get team profile, known aliases (e.g. IND, IN, India), and active fixtures.", sample: "/api/teams/IND" },
+      { group: "channels", method: "GET", path: "/api/channels", summary: "List 24/7 live sports and regional TV channels aggregated across all 6 providers.", sample: "/api/channels?limit=20" },
+      { group: "channels", method: "GET", path: "/api/channels/:channelId", summary: "Resolve channel metadata and playable stream feeds for a specific channel ID." },
+      { group: "broadcasters", method: "GET", path: "/api/broadcasters", summary: "List broadcast networks (Star Sports, Sony Sports, JioCinema, Willow TV, Sky Sports) with fixture and channel counts.", sample: "/api/broadcasters" },
+      { group: "providers", method: "GET", path: "/api/providers", summary: "Inspect all 6 CS3 providers, Firebase project IDs, cipher algorithms, circuit breaker states, and live fixture counts.", sample: "/api/providers" },
+      { group: "providers", method: "GET", path: "/api/providers/:providerId", summary: "Detailed inspection of a single provider (cricify, sportzx, playztv, playfy, sktech, livxow) and its contributed fixtures.", sample: "/api/providers/cricify" },
+      { group: "stream", method: "GET", path: "/api/stream/:fixtureKey", summary: "Resolve deduplicated stream feeds with multi-provider attribution, ClearKey DRM keys, renditions, and optional ?probe=true canary health check." },
+      { group: "stream", method: "GET", path: "/api/proxy", summary: "CORS-enabled HLS/DASH edge reverse proxy with header spoofing, child manifest URL rewriting, and automatic mirror failover." },
+      { group: "stream", method: "GET", path: "/api/playlist.m3u", summary: "Generate IPTV M3U8 playlist with #KODIPROP ClearKey DRM and #EXTVLCOPT headers.", sample: "/api/playlist.m3u?sport=cricket" },
+      { group: "stream", method: "GET", path: "/api/live/sse", summary: "Real-time Server-Sent Events (SSE) stream pushing catalog diffs and provider health telemetry." },
+      { group: "search", method: "GET", path: "/api/search", summary: "Unified cross-resource search across matches, tournaments, teams, and channels.", sample: "/api/search?q=India" },
+      { group: "search", method: "GET", path: "/api/stats", summary: "Comprehensive platform statistics across sports, phases, providers, DRM coverage, caches, and system memory.", sample: "/api/stats" },
+      { group: "search", method: "GET", path: "/health", summary: "Gateway health status, provider circuit states, cache hit rates, and endpoint directory.", sample: "/health" }
+    ];
+
+    function renderEndpointCatalog(filterText = "") {
+      const container = document.getElementById("endpoints-list-container");
+      const q = filterText.toLowerCase().trim();
+      const filtered = ENDPOINT_CATALOG.filter(item =>
+        !q ||
+        item.group.toLowerCase().includes(q) ||
+        item.path.toLowerCase().includes(q) ||
+        item.summary.toLowerCase().includes(q)
+      );
+
+      document.getElementById("endpoints-count-label").textContent = `${filtered.length} Endpoints Shown`;
+
+      container.innerHTML = filtered.map(ep => `
+        <div class="p-3.5 rounded-lg bg-[#151518] border border-[#27272A] hover:border-zinc-600 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2.5 font-mono text-xs">
+              <span class="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 font-bold">${ep.method}</span>
+              <span class="text-white font-semibold">${ep.path}</span>
+              <span class="text-[11px] text-zinc-500 uppercase">${ep.group}</span>
+            </div>
+            <p class="text-xs text-zinc-400">${ep.summary}</p>
+          </div>
+          ${ep.sample ? `
+            <button
+              onclick="loadConsolePreset('${ep.sample}')"
+              class="self-start sm:self-center shrink-0 px-2.5 py-1 rounded bg-[#1C1C21] hover:bg-zinc-200 hover:text-zinc-950 border border-[#27272A] font-mono text-[11px] text-zinc-300 transition"
+            >
+              Try in Console
+            </button>
+          ` : ''}
+        </div>
+      `).join("");
+    }
+
+    function filterEndpoints(val) {
+      const input = document.getElementById("docs-search-input");
+      if (input && input.value !== val) input.value = val;
+      renderEndpointCatalog(val);
+    }
+
+    async function loadConsolePreset(path) {
+      document.getElementById("console-path-input").value = path;
+      document.getElementById("section-explorer").scrollIntoView({ behavior: "smooth" });
+      await runConsoleRequest();
+    }
+
+    async function runConsoleRequest() {
+      const path = document.getElementById("console-path-input").value.trim() || "/api/stats";
+      const outEl = document.getElementById("console-json-output");
+      const statusEl = document.getElementById("console-status");
+      const latencyEl = document.getElementById("console-latency");
+      const sizeEl = document.getElementById("console-size");
+
+      outEl.textContent = "Executing GET " + path + "...";
+      const t0 = performance.now();
+      try {
+        const res = await fetch(path);
+        const elapsed = (performance.now() - t0).toFixed(1);
+        const text = await res.text();
+        latencyEl.textContent = elapsed + " ms";
+        sizeEl.textContent = (new Blob([text]).size / 1024).toFixed(2) + " KB";
+        statusEl.textContent = res.status + " " + res.statusText;
+        statusEl.className = res.ok ? "text-emerald-400" : "text-amber-400";
+
+        try {
+          const parsed = JSON.parse(text);
+          outEl.textContent = JSON.stringify(parsed, null, 2);
+        } catch {
+          outEl.textContent = text;
+        }
+      } catch (err) {
+        statusEl.textContent = "Request Failed";
+        statusEl.className = "text-red-400";
+        outEl.textContent = String(err);
+      }
+    }
+
+    function copyConsoleOutput() {
+      const text = document.getElementById("console-json-output").textContent;
+      navigator.clipboard.writeText(text);
+    }
+
+    async function loadInitialTelemetry() {
+      try {
+        const t0 = performance.now();
+        const res = await fetch("/api/stats");
+        const elapsed = (performance.now() - t0).toFixed(1);
+        if (res.ok) {
+          const text = await res.text();
+          const data = JSON.parse(text);
+          if (data.overview) {
+            document.getElementById("doc-stat-fixtures").textContent = data.overview.totalFixtures;
+            document.getElementById("doc-stat-live").textContent = `${data.overview.liveFixtures} Live / ${data.overview.upcomingFixtures} Upcoming`;
+            document.getElementById("doc-stat-providers").textContent = `${data.overview.providersOnline} / ${data.overview.providersTotal}`;
+          }
+          document.getElementById("console-latency").textContent = elapsed + " ms";
+          document.getElementById("console-size").textContent = (new Blob([text]).size / 1024).toFixed(2) + " KB";
+          document.getElementById("console-json-output").textContent = JSON.stringify(data, null, 2);
+        }
+      } catch {}
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      renderEndpointCatalog("");
+      loadInitialTelemetry();
+      if (typeof SwaggerUIBundle !== "undefined") {
+        window.ui = SwaggerUIBundle({
+          url: "/api/openapi.json",
+          dom_id: "#swagger-ui",
+          deepLinking: true,
+          docExpansion: "list",
+          defaultModelsExpandDepth: 1,
+          tryItOutEnabled: true
+        });
+      }
+    });
+  </script>
+</body>
+</html>

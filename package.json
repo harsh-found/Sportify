@@ -1,0 +1,22 @@
+{
+  "name": "sportify-api",
+  "version": "1.0.0",
+  "description": "Sportify High-Availability Live Sports & Stream Aggregator Gateway API",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "build": "bun x tsc --noEmit",
+    "lint": "bun x tsc --noEmit",
+    "test": "bun test",
+    "benchmark": "bun run tests/benchmark.ts"
+  },
+  "dependencies": {
+    "hono": "^4.7.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

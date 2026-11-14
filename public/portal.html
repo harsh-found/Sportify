@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sportify Live Portal — Live Sports Catalog & Stream Explorer</title>
+  
+  <!-- Inter & JetBrains Mono fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Phosphor Icons CDN -->
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+
+  <!-- HLS.js for Live Stream Playback Bench -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+            mono: ["JetBrains Mono", "ui-monospace", "monospace"]
+          },
+          colors: {
+            bg: "#101010",
+            surface: {
+              DEFAULT: "#1C1C1C",
+              elevated: "#222222",
+              active: "#2A2A2A",
+              border: "#282828",
+              borderHover: "#404040"
+            },
+            accent: {
+              DEFAULT: "#CCCCCC",
+              light: "#FFFFFF",
+              muted: "#888888"
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      background-color: #101010;
+      color: #EDEDED;
+      -webkit-font-smoothing: antialiased;
+    }
+    ::selection {
+      background: #333333;
+      color: #FFFFFF;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #141414;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #2C2C2C;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #444444;
+    }
+    .pulse-dot {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.85); }
+    }
+    .glow-live {
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+    }
+    .glow-accent {
+      box-shadow: 0 0 15px rgba(204, 204, 204, 0.12);
+    }
+  </style>
+</head>
+<body class="min-h-screen font-sans bg-[#101010] text-[#EDEDED] flex flex-col antialiased selection:bg-[#2C2C2C] selection:text-white">
+
+  <!-- Top Navigation Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-md bg-[#1C1C1C]/90 border-b border-[#282828] shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3 shrink-0">
+        <a href="/portal" class="flex items-center space-x-3 group">
+          <div class="w-9 h-9 rounded-xl bg-[#262626] border border-[#383838] text-[#CCCCCC] flex items-center justify-center font-bold tracking-tight shadow-sm group-hover:border-[#CCCCCC] group-hover:text-white transition duration-200">
+            <i class="ph ph-broadcast text-lg"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-base font-bold tracking-tight text-white group-hover:text-[#CCCCCC] transition">Sportify Live</span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 text-emerald-400 bg-emerald-950/40 font-mono font-medium flex items-center space-x-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot inline-block"></span>
+                <span>LIVE HUB</span>
+              </span>
+            </div>
+            <div class="text-[10px] text-[#888888] font-mono -mt-0.5">Live Sports Catalog & Stream Explorer</div>
+          </div>
+        </a>
+      </div>
+
+      <!-- Quick Search Bar -->
+      <div class="flex-1 max-w-md hidden sm:block">
+        <div class="relative flex items-center">
+          <i class="ph ph-magnifying-glass absolute left-3 text-[#777777] text-sm"></i>
+          <input 
+            id="search-input" 
+            type="text" 
+            placeholder="Search teams, tournaments, leagues (e.g. India, IPL, F1)..." 
+            oninput="handleSearch(this.value)"
+            class="w-full pl-9 pr-8 py-2 font-sans text-xs rounded-xl border border-[#282828] bg-[#141414] focus:bg-[#181818] text-[#F0F0F0] placeholder:text-[#666666] focus:outline-none focus:border-[#CCCCCC] focus:ring-1 focus:ring-[#CCCCCC] transition"
+          >
+          <button id="search-clear-btn" onclick="clearSearch()" class="hidden absolute right-2.5 text-[#777777] hover:text-[#CCCCCC] text-xs transition">
+            <i class="ph ph-x-circle text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Top Stats & Links -->
+      <div class="flex items-center space-x-3 shrink-0">
+        <div class="hidden md:flex items-center space-x-2 text-xs font-mono tabular-nums">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
+            <span id="nav-live-count">0</span>
+            <span>Live Now</span>
+          </span>
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#222222] text-[#CCCCCC] border border-[#2E2E2E]">
+            <span id="nav-total-count">0</span>
+            <span>Fixtures</span>
+          </span>
+        </div>
+
+        <a href="/docs" class="px-3 py-1.5 rounded-xl border border-[#2E2E2E] bg-[#222222] hover:bg-[#2A2A2A] hover:border-[#CCCCCC] text-xs font-medium text-[#CCCCCC] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-terminal-window text-sm"></i>
+          <span class="hidden sm:inline">API Docs</span>
+        </a>
+
+        <a href="/api/playlist.m3u" target="_blank" class="px-3 py-1.5 rounded-xl border border-[#2E2E2E] bg-[#222222] hover:bg-[#2A2A2A] hover:border-[#CCCCCC] text-xs font-medium text-[#CCCCCC] hover:text-white transition flex items-center space-x-1.5" title="Download IPTV M3U Playlist">
+          <i class="ph ph-list-dashes text-sm"></i>
+          <span class="hidden sm:inline">IPTV M3U</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Mobile Search Bar -->
+    <div class="sm:hidden px-4 pb-3">
+      <div class="relative flex items-center">
+        <i class="ph ph-magnifying-glass absolute left-3 text-[#777777] text-sm"></i>
+        <input 
+          id="mobile-search-input" 
+          type="text" 
+          placeholder="Search teams or tournaments..." 
+          oninput="handleSearch(this.value)"
+          class="w-full pl-9 pr-4 py-2 font-sans text-xs rounded-xl border border-[#282828] bg-[#141414] text-[#F0F0F0] placeholder:text-[#666666] focus:outline-none focus:border-[#CCCCCC]"
+        >
+      </div>
+    </div>
+  </header>
+
+  <!-- Filter & Controls Toolbar -->
+  <section class="border-b border-[#242424] bg-[#181818]/80 backdrop-blur-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      
+      <!-- Phase Filter Tabs (All / Live Now / Upcoming) -->
+      <div class="flex items-center space-x-1.5 bg-[#141414] p-1 rounded-xl text-xs font-medium shrink-0 border border-[#242424]">
+        <button id="tab-all" onclick="setPhaseFilter('all')" class="phase-btn px-3 py-1.5 rounded-lg bg-[#2A2A2A] text-white font-semibold border border-[#3A3A3A] transition flex items-center space-x-1.5">
+          <i class="ph ph-squares-four text-xs"></i>
+          <span>All (<span id="count-all">0</span>)</span>
+        </button>
+        <button id="tab-live" onclick="setPhaseFilter('live')" class="phase-btn px-3 py-1.5 rounded-lg text-[#999999] hover:text-white transition flex items-center space-x-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+          <span>Live Now (<span id="count-live">0</span>)</span>
+        </button>
+        <button id="tab-upcoming" onclick="setPhaseFilter('upcoming')" class="phase-btn px-3 py-1.5 rounded-lg text-[#999999] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-clock text-xs"></i>
+          <span>Upcoming (<span id="count-upcoming">0</span>)</span>
+        </button>
+      </div>
+
+      <!-- Sports Category Chips Bar -->
+      <div id="sports-chips-bar" class="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0 custom-scrollbar text-xs">
+        <button onclick="setSportFilter('')" class="sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#CCCCCC] bg-[#CCCCCC] text-[#101010] font-semibold transition flex items-center space-x-1.5">
+          <i class="ph ph-trophy"></i>
+          <span>All Sports</span>
+        </button>
+        <button onclick="setSportFilter('cricket')" class="sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] hover:border-[#404040] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-baseball"></i>
+          <span>Cricket</span>
+        </button>
+        <button onclick="setSportFilter('football')" class="sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] hover:border-[#404040] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-soccer-ball"></i>
+          <span>Football</span>
+        </button>
+        <button onclick="setSportFilter('motorsport')" class="sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] hover:border-[#404040] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-flag-checkered"></i>
+          <span>Motorsport</span>
+        </button>
+        <button onclick="setSportFilter('tennis')" class="sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] hover:border-[#404040] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-tennis-ball"></i>
+          <span>Tennis</span>
+        </button>
+        <button onclick="setSportFilter('basketball')" class="sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] hover:border-[#404040] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-basketball"></i>
+          <span>Basketball</span>
+        </button>
+        <button onclick="setSportFilter('wwe')" class="sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] hover:border-[#404040] hover:text-white transition flex items-center space-x-1.5">
+          <i class="ph ph-shield"></i>
+          <span>WWE / MMA</span>
+        </button>
+      </div>
+
+      <!-- Sort Selection -->
+      <div class="flex items-center space-x-2 shrink-0 self-end md:self-auto">
+        <label for="sort-select" class="text-xs text-[#888888] flex items-center space-x-1">
+          <i class="ph ph-faders text-xs"></i>
+          <span>Sort:</span>
+        </label>
+        <select id="sort-select" onchange="applySorting(this.value)" class="text-xs font-medium py-1.5 px-3 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] focus:outline-none focus:border-[#CCCCCC] focus:ring-1 focus:ring-[#CCCCCC]">
+          <option value="status_first">Live First</option>
+          <option value="most_feeds">Most Feeds</option>
+          <option value="name_asc">Name (A-Z)</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content Layout -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full space-y-6">
+
+    <!-- Active Filter Status Notification -->
+    <div class="flex items-center justify-between text-xs text-[#888888]">
+      <div class="flex items-center space-x-2">
+        <span class="font-semibold text-white flex items-center space-x-1.5" id="filter-status-label">
+          <i class="ph ph-funnel text-xs text-[#CCCCCC]"></i>
+          <span>Showing All Sports</span>
+        </span>
+        <span>&bull;</span>
+        <span id="filtered-count-badge" class="font-mono text-[#AAAAAA]">Loading live catalog...</span>
+      </div>
+      <button onclick="refreshCatalog()" class="text-[#CCCCCC] hover:text-white flex items-center space-x-1.5 transition font-medium px-2.5 py-1 rounded-lg hover:bg-[#1C1C1C]">
+        <i class="ph ph-arrows-clockwise text-sm" id="refresh-icon"></i>
+        <span>Sync Feeds</span>
+      </button>
+    </div>
+
+    <!-- Match Catalog Grid -->
+    <div id="catalog-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <!-- Loading Skeletons -->
+      <div class="p-5 rounded-2xl border border-[#242424] bg-[#1C1C1C] animate-pulse space-y-3">
+        <div class="h-4 bg-[#262626] rounded w-1/3"></div>
+        <div class="h-12 bg-[#222222] rounded w-full"></div>
+        <div class="h-4 bg-[#262626] rounded w-1/2"></div>
+      </div>
+      <div class="p-5 rounded-2xl border border-[#242424] bg-[#1C1C1C] animate-pulse space-y-3">
+        <div class="h-4 bg-[#262626] rounded w-1/3"></div>
+        <div class="h-12 bg-[#222222] rounded w-full"></div>
+        <div class="h-4 bg-[#262626] rounded w-1/2"></div>
+      </div>
+      <div class="p-5 rounded-2xl border border-[#242424] bg-[#1C1C1C] animate-pulse space-y-3">
+        <div class="h-4 bg-[#262626] rounded w-1/3"></div>
+        <div class="h-12 bg-[#222222] rounded w-full"></div>
+        <div class="h-4 bg-[#262626] rounded w-1/2"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Slide-Over Stream Inspector & Live Player Drawer -->
+  <div id="drawer-backdrop" onclick="closeDrawer()" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs transition-opacity"></div>
+  
+  <aside id="stream-drawer" class="fixed top-0 right-0 bottom-0 z-50 w-full max-w-2xl bg-[#1C1C1C] border-l border-[#2E2E2E] shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 ease-in-out">
+    
+    <!-- Drawer Header -->
+    <div class="px-5 py-4 border-b border-[#282828] flex items-center justify-between bg-[#181818] shrink-0">
+      <div class="flex items-center space-x-3">
+        <div id="drawer-sport-icon" class="w-9 h-9 rounded-xl bg-[#262626] border border-[#383838] text-[#CCCCCC] flex items-center justify-center font-bold text-sm">
+          <i class="ph ph-broadcast text-lg"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span id="drawer-phase-badge" class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-950/40 text-emerald-400 border border-emerald-500/30">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1 pulse-dot"></span>LIVE
+            </span>
+            <span id="drawer-kind-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-[#282828] text-[#CCCCCC] uppercase">MATCH</span>
+          </div>
+          <h3 id="drawer-title" class="font-bold text-sm text-white mt-0.5 truncate max-w-md">Match Title</h3>
+        </div>
+      </div>
+      <button onclick="closeDrawer()" class="p-2 rounded-xl border border-[#2E2E2E] bg-[#222222] hover:bg-[#2A2A2A] text-[#CCCCCC] hover:text-white transition">
+        <i class="ph ph-x text-base"></i>
+      </button>
+    </div>
+
+    <!-- Drawer Scrollable Body -->
+    <div class="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar bg-[#161616]">
+
+      <!-- Embedded Live Video Player Bench -->
+      <div id="drawer-player-box" class="hidden rounded-2xl border border-[#2E2E2E] overflow-hidden bg-black shadow-lg space-y-0">
+        <div class="aspect-video relative bg-black flex items-center justify-center">
+          <video id="drawer-video-player" controls playsinline class="w-full h-full object-contain"></video>
+        </div>
+        
+        <!-- Player Diagnostics Bar -->
+        <div class="p-3 bg-[#111111] border-t border-[#222222] text-xs font-mono flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center space-x-3">
+            <span id="player-active-channel" class="font-semibold text-emerald-400 flex items-center space-x-1">
+              <i class="ph ph-play-fill text-xs"></i>
+              <span>Sports Live</span>
+            </span>
+            <span id="player-active-res" class="text-[#CCCCCC]">1080p FHD</span>
+            <span id="player-buffer-stat" class="text-[#777777]">Buffer: 0s</span>
+          </div>
+          <button onclick="stopPlayback()" class="text-[#999999] hover:text-white flex items-center space-x-1 font-sans text-xs transition">
+            <i class="ph ph-stop-circle text-sm text-red-400"></i>
+            <span>Stop Playback</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Fixture Meta Card -->
+      <div class="rounded-xl border border-[#282828] bg-[#1C1C1C] p-4 space-y-3">
+        <div class="text-[11px] font-mono text-[#888888] uppercase tracking-wider font-semibold flex items-center space-x-1.5">
+          <i class="ph ph-fingerprint text-xs text-[#CCCCCC]"></i>
+          <span>Canonical Fixture Key</span>
+        </div>
+        <div class="flex items-center justify-between gap-2 bg-[#141414] border border-[#282828] p-2.5 rounded-lg">
+          <code id="drawer-canonical-key" class="font-mono text-xs text-[#CCCCCC] break-all select-all">cricket::ind-vs-nz::2026</code>
+          <button onclick="copyCanonicalKey()" class="p-1 text-[#888888] hover:text-white transition shrink-0" title="Copy key">
+            <i class="ph ph-copy text-sm"></i>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+          <div class="p-2.5 rounded-lg bg-[#141414] border border-[#282828]">
+            <div class="text-[10px] text-[#777777] uppercase font-mono">Sport</div>
+            <div id="drawer-meta-sport" class="font-semibold text-white capitalize mt-0.5">Cricket</div>
+          </div>
+          <div class="p-2.5 rounded-lg bg-[#141414] border border-[#282828]">
+            <div class="text-[10px] text-[#777777] uppercase font-mono">Total Feeds</div>
+            <div id="drawer-meta-feeds" class="font-semibold text-white mt-0.5">2 Feeds</div>
+          </div>
+          <div class="p-2.5 rounded-lg bg-[#141414] border border-[#282828]">
+            <div class="text-[10px] text-[#777777] uppercase font-mono">Broadcaster</div>
+            <div id="drawer-meta-broadcaster" class="font-semibold text-white truncate mt-0.5">Star Sports</div>
+          </div>
+          <div class="p-2.5 rounded-lg bg-[#141414] border border-[#282828]">
+            <div class="text-[10px] text-[#777777] uppercase font-mono">Languages</div>
+            <div id="drawer-meta-languages" class="font-semibold text-white uppercase mt-0.5">ENG, HIN</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feeds List Section -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+            <i class="ph ph-broadcast text-[#CCCCCC]"></i>
+            <span>Resolved Stream Feeds &bull; Multi-Source Provenance</span>
+          </div>
+          <button onclick="probeCurrentFixture()" class="text-xs text-[#CCCCCC] hover:text-white flex items-center space-x-1 font-medium transition px-2 py-1 rounded bg-[#222222] border border-[#2E2E2E]">
+            <i class="ph ph-activity text-sm text-emerald-400"></i>
+            <span>Probe Latency</span>
+          </button>
+        </div>
+
+        <div id="drawer-feeds-list" class="space-y-3">
+          <!-- Feed items injected here -->
+          <div class="text-xs text-[#777777] py-6 text-center font-mono">Loading feeds...</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Drawer Footer -->
+    <div class="p-4 border-t border-[#282828] bg-[#181818] flex items-center justify-between text-xs text-[#888888] shrink-0">
+      <div class="flex items-center space-x-1.5 font-mono">
+        <i class="ph ph-shield-check text-emerald-400 text-sm"></i>
+        <span>Edge-Federated Reverse Proxy Active</span>
+      </div>
+      <button onclick="closeDrawer()" class="px-4 py-1.5 rounded-xl border border-[#333333] bg-[#222222] hover:bg-[#2A2A2A] text-white font-medium transition">
+        Close Inspector
+      </button>
+    </div>
+  </aside>
+
+  <!-- App Toast Notification -->
+  <div id="app-toast" class="hidden fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-[#1C1C1C] border border-[#333333] text-white text-xs font-medium shadow-2xl flex items-center space-x-2 transition transform translate-y-2 glow-accent">
+    <i class="ph ph-check-circle text-emerald-400 text-base"></i>
+    <span id="toast-message">Copied to clipboard!</span>
+  </div>
+
+  <!-- Footer -->
+  <footer class="mt-auto border-t border-[#242424] bg-[#141414] py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#777777] font-mono">
+      <div class="flex items-center space-x-2">
+        <i class="ph ph-broadcast text-[#CCCCCC]"></i>
+        <span class="font-bold text-white font-sans">Sportify Live Sports Gateway</span>
+        <span>&bull;</span>
+        <span>v1.0.0 Federated Engine</span>
+      </div>
+      <div>
+        Cricify &bull; Sportzx &bull; PlayZTV &bull; PlayFy &bull; SKTech &bull; LivXow
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Logic -->
+  <script>
+    let allFixtures = [];
+    let currentFilter = {
+      phase: "all",
+      sport: "",
+      search: "",
+      sort: "status_first"
+    };
+    let activeFixtureKey = null;
+    let activeHls = null;
+
+    async function initPortal() {
+      await fetchCatalogData();
+      startAutoRefresh();
+    }
+
+    async function fetchCatalogData() {
+      const icon = document.getElementById("refresh-icon");
+      if (icon) icon.classList.add("animate-spin");
+
+      try {
+        const res = await fetch("/api/catalog");
+        if (res.ok) {
+          const json = await res.json();
+          allFixtures = json.fixtures || [];
+          updateCounts();
+          renderCatalog();
+        } else {
+          throw new Error("HTTP " + res.status);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch live catalog, using fallback", err);
+        loadMockCatalog();
+      } finally {
+        if (icon) setTimeout(() => icon.classList.remove("animate-spin"), 500);
+      }
+    }
+
+    function updateCounts() {
+      const total = allFixtures.length;
+      const live = allFixtures.filter(f => f.schedule?.isLive).length;
+      const upcoming = allFixtures.filter(f => !f.schedule?.isLive).length;
+
+      document.getElementById("nav-live-count").textContent = live;
+      document.getElementById("nav-total-count").textContent = total;
+      document.getElementById("count-all").textContent = total;
+      document.getElementById("count-live").textContent = live;
+      document.getElementById("count-upcoming").textContent = upcoming;
+    }
+
+    function renderCatalog() {
+      const container = document.getElementById("catalog-container");
+      let filtered = [...allFixtures];
+
+      // 1. Phase Filter
+      if (currentFilter.phase === "live") {
+        filtered = filtered.filter(f => f.schedule?.isLive);
+      } else if (currentFilter.phase === "upcoming") {
+        filtered = filtered.filter(f => !f.schedule?.isLive);
+      }
+
+      // 2. Sport Filter
+      if (currentFilter.sport) {
+        filtered = filtered.filter(f => f.sport?.toLowerCase() === currentFilter.sport.toLowerCase());
+      }
+
+      // 3. Search Filter
+      if (currentFilter.search) {
+        const q = currentFilter.search.toLowerCase();
+        filtered = filtered.filter(f => {
+          const matchTitle = f.title?.toLowerCase().includes(q);
+          const matchTourn = f.tournament?.name?.toLowerCase().includes(q) || f.tournament?.shortName?.toLowerCase().includes(q);
+          const matchTeamA = f.teams?.teamA?.name?.toLowerCase().includes(q);
+          const matchTeamB = f.teams?.teamB?.name?.toLowerCase().includes(q);
+          return matchTitle || matchTourn || matchTeamA || matchTeamB;
+        });
+      }
+
+      // 4. Sorting
+      if (currentFilter.sort === "status_first") {
+        filtered.sort((a, b) => {
+          if (a.schedule?.isLive === b.schedule?.isLive) {
+            return (b.streamMetadata?.totalWorkingFeeds || 0) - (a.streamMetadata?.totalWorkingFeeds || 0);
+          }
+          return a.schedule?.isLive ? -1 : 1;
+        });
+      } else if (currentFilter.sort === "most_feeds") {
+        filtered.sort((a, b) => (b.streamMetadata?.totalWorkingFeeds || 0) - (a.streamMetadata?.totalWorkingFeeds || 0));
+      } else if (currentFilter.sort === "name_asc") {
+        filtered.sort((a, b) => a.title.localeCompare(b.title));
+      }
+
+      document.getElementById("filtered-count-badge").textContent = `${filtered.length} matches displayed`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full py-16 text-center rounded-2xl border border-dashed border-[#282828] bg-[#181818] p-8 space-y-2">
+            <i class="ph ph-magnifying-glass text-3xl text-[#555555]"></i>
+            <div class="font-bold text-sm text-white">No matching fixtures found</div>
+            <p class="text-xs text-[#777777]">Try adjusting your search terms or selecting a different sport category.</p>
+            <button onclick="clearAllFilters()" class="mt-3 px-3.5 py-1.5 rounded-xl bg-[#CCCCCC] text-[#101010] text-xs font-semibold hover:bg-white transition">
+              Reset Filters
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(fixture => {
+        const isLive = fixture.schedule?.isLive;
+        const sport = fixture.sport || "sports";
+        const sportIcon = sport === "cricket" ? "ph-baseball" : sport === "football" ? "ph-soccer-ball" : sport === "motorsport" ? "ph-flag-checkered" : sport === "tennis" ? "ph-tennis-ball" : sport === "basketball" ? "ph-basketball" : "ph-trophy";
+        
+        const providers = Object.keys(fixture.providerPointers || {});
+
+        const teamsLayout = fixture.teams ? `
+          <div class="py-2.5 border-y border-[#242424] my-2 space-y-2">
+            <div class="flex items-center justify-between text-xs font-bold text-white">
+              <span class="truncate flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-[#CCCCCC] inline-block"></span>
+                <span class="truncate">${fixture.teams.teamA.name}</span>
+              </span>
+              <span class="font-mono text-[11px] text-[#888888] font-normal px-1.5 py-0.5 rounded bg-[#161616] border border-[#262626]">${fixture.teams.teamA.code}</span>
+            </div>
+            <div class="flex items-center justify-between text-xs font-bold text-white">
+              <span class="truncate flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-[#CCCCCC] inline-block"></span>
+                <span class="truncate">${fixture.teams.teamB.name}</span>
+              </span>
+              <span class="font-mono text-[11px] text-[#888888] font-normal px-1.5 py-0.5 rounded bg-[#161616] border border-[#262626]">${fixture.teams.teamB.code}</span>
+            </div>
+          </div>
+        ` : `
+          <div class="py-3 border-y border-[#242424] my-2 flex items-center space-x-2.5 text-xs text-[#CCCCCC] font-medium truncate">
+            <div class="w-7 h-7 rounded-lg bg-[#222222] border border-[#2E2E2E] flex items-center justify-center text-[#CCCCCC] shrink-0">
+              <i class="ph ph-broadcast text-xs"></i>
+            </div>
+            <div class="truncate">
+              <div class="font-bold text-white truncate">${fixture.tournament?.name || fixture.title}</div>
+              <div class="text-[10px] text-[#777777] font-mono">${fixture.tournament?.category || "24/7 Live Broadcast"}</div>
+            </div>
+          </div>
+        `;
+
+        const languages = fixture.streamMetadata?.availableLanguages?.map(l => l.toUpperCase()).join(", ") || "ENG";
+        const resolution = fixture.streamMetadata?.maxResolution || "1080p FHD";
+
+        return `
+          <div 
+            onclick="openStreamDrawer('${fixture.canonicalKey}')"
+            class="group cursor-pointer rounded-2xl border border-[#262626] bg-[#1C1C1C] p-4 hover:border-[#444444] hover:bg-[#202020] hover:shadow-[0_8px_30px_rgba(0,0,0,0.6)] transition duration-200 flex flex-col justify-between space-y-3"
+          >
+            <div>
+              <!-- Card Header -->
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="inline-flex items-center space-x-1.5 text-[#CCCCCC] font-mono font-medium">
+                  <i class="ph ${sportIcon} text-sm text-[#CCCCCC]"></i>
+                  <span class="capitalize">${sport}</span>
+                </span>
+                
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium ${isLive ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/40 glow-live' : 'bg-[#262626] text-[#888888] border border-[#333333]'}">
+                  ${isLive ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1 pulse-dot"></span>LIVE NOW' : '<i class="ph ph-clock mr-1 text-[10px]"></i>UPCOMING'}
+                </span>
+              </div>
+
+              <!-- Match Title -->
+              <h4 class="font-bold text-sm text-white mt-2 truncate group-hover:text-[#CCCCCC] transition" title="${fixture.title}">
+                ${fixture.title}
+              </h4>
+
+              <!-- Teams / Tournament Body -->
+              ${teamsLayout}
+            </div>
+
+            <!-- Card Bottom Meta -->
+            <div class="space-y-2.5 pt-1">
+              <div class="flex items-center justify-between text-[11px] text-[#888888] font-mono">
+                <span class="flex items-center space-x-1">
+                  <i class="ph ph-broadcast text-xs text-[#CCCCCC]"></i>
+                  <span>${fixture.streamMetadata?.totalWorkingFeeds || providers.length} Feeds &bull; ${resolution}</span>
+                </span>
+                <span class="px-1.5 py-0.5 rounded bg-[#242424] border border-[#303030] text-[10px] text-[#CCCCCC]">${languages}</span>
+              </div>
+
+              <!-- Providers Pills & Action -->
+              <div class="flex items-center justify-between pt-2 border-t border-[#262626]">
+                <div class="flex items-center space-x-1 overflow-hidden">
+                  ${providers.slice(0, 3).map(p => `
+                    <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#161616] border border-[#2E2E2E] text-[#CCCCCC] uppercase font-medium truncate">${p}</span>
+                  `).join("")}
+                  ${providers.length > 3 ? `<span class="text-[9px] font-mono text-[#777777]">+${providers.length - 3}</span>` : ''}
+                </div>
+
+                <span class="text-xs font-semibold text-white group-hover:text-[#CCCCCC] group-hover:translate-x-0.5 transition flex items-center space-x-1">
+                  <span>View Streams</span>
+                  <i class="ph ph-arrow-right text-xs"></i>
+                </span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function openStreamDrawer(canonicalKey) {
+      activeFixtureKey = canonicalKey;
+      const fixture = allFixtures.find(f => f.canonicalKey === canonicalKey);
+      if (!fixture) return;
+
+      // Populate Drawer Header
+      document.getElementById("drawer-title").textContent = fixture.title;
+      document.getElementById("drawer-canonical-key").textContent = fixture.canonicalKey;
+      document.getElementById("drawer-kind-badge").textContent = fixture.kind === "tournament_channel" ? "LEAGUE STREAM" : "MATCH FEED";
+      
+      const isLive = fixture.schedule?.isLive;
+      document.getElementById("drawer-phase-badge").innerHTML = isLive 
+        ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1 pulse-dot"></span>LIVE'
+        : '<i class="ph ph-clock mr-1"></i>UPCOMING';
+      document.getElementById("drawer-phase-badge").className = isLive 
+        ? "px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-950/40 text-emerald-400 border border-emerald-500/30"
+        : "px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#262626] text-[#888888] border border-[#333333]";
+
+      // Meta grid
+      document.getElementById("drawer-meta-sport").textContent = fixture.sport;
+      document.getElementById("drawer-meta-feeds").textContent = `${fixture.streamMetadata?.totalWorkingFeeds || 1} Feeds`;
+      document.getElementById("drawer-meta-broadcaster").textContent = fixture.streamMetadata?.primaryBroadcasters?.[0] || "Global Feed";
+      document.getElementById("drawer-meta-languages").textContent = fixture.streamMetadata?.availableLanguages?.join(", ").toUpperCase() || "ENG";
+
+      // Open drawer UI
+      document.getElementById("drawer-backdrop").classList.remove("hidden");
+      document.getElementById("stream-drawer").classList.remove("translate-x-full");
+
+      // Fetch rich stream feeds
+      await loadDrawerFeeds(canonicalKey);
+    }
+
+    async function loadDrawerFeeds(canonicalKey, probe = false) {
+      const listEl = document.getElementById("drawer-feeds-list");
+      listEl.innerHTML = `
+        <div class="py-8 text-center text-xs text-[#888888] font-mono space-y-2">
+          <i class="ph ph-spinner animate-spin text-xl text-[#CCCCCC]"></i>
+          <div>Resolving playable multi-provider feeds...</div>
+        </div>
+      `;
+
+      try {
+        const url = `/api/stream/${encodeURIComponent(canonicalKey)}${probe ? '?probe=true' : ''}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = await res.json();
+          renderDrawerFeeds(json.feeds || []);
+        } else {
+          throw new Error("HTTP " + res.status);
+        }
+      } catch (err) {
+        listEl.innerHTML = `
+          <div class="py-6 text-center text-xs text-amber-300 bg-amber-950/30 rounded-xl border border-amber-600/30 p-4 space-y-1">
+            <i class="ph ph-warning text-lg"></i>
+            <div class="font-semibold">Unable to resolve feeds dynamically</div>
+            <div class="text-[11px] text-amber-400/80 font-mono">Stream server is warming up or fixture has ended.</div>
+          </div>
+        `;
+      }
+    }
+
+    function renderDrawerFeeds(feeds) {
+      const listEl = document.getElementById("drawer-feeds-list");
+      if (!feeds || feeds.length === 0) {
+        listEl.innerHTML = '<div class="py-6 text-center text-xs text-[#777777] font-mono">No working feeds found for this match.</div>';
+        return;
+      }
+
+      listEl.innerHTML = feeds.map((feed, idx) => {
+        const isPrimary = feed.priorityTier === "primary";
+        const hasClearKey = feed.drm && feed.drm.clearKeys && feed.drm.clearKeys.length > 0;
+
+        const clearKeyBox = hasClearKey ? `
+          <div class="rounded-lg bg-[#111111] border border-[#282828] text-white p-2.5 font-mono text-[11px] space-y-1 select-all">
+            <div class="text-[10px] text-[#888888] uppercase font-semibold flex items-center justify-between">
+              <span class="flex items-center space-x-1">
+                <i class="ph ph-key text-xs text-[#CCCCCC]"></i>
+                <span>ClearKey Authorization</span>
+              </span>
+              <button onclick="copyText('${feed.drm.clearKeys[0].kid}:${feed.drm.clearKeys[0].key}', 'ClearKey Copied!')" class="text-xs text-emerald-400 hover:text-white" title="Copy KID:KEY">
+                <i class="ph ph-copy"></i>
+              </button>
+            </div>
+            <div class="truncate text-[#CCCCCC]"><strong>KID:</strong> ${feed.drm.clearKeys[0].kid}</div>
+            <div class="truncate text-[#CCCCCC]"><strong>KEY:</strong> ${feed.drm.clearKeys[0].key}</div>
+          </div>
+        ` : '';
+
+        return `
+          <div class="rounded-xl border ${isPrimary ? 'border-[#444444] bg-[#1E1E1E]' : 'border-[#282828] bg-[#191919]'} p-4 space-y-3 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 rounded-lg ${isPrimary ? 'bg-[#CCCCCC] text-[#101010]' : 'bg-[#282828] text-[#CCCCCC]'} flex items-center justify-center font-bold text-xs shrink-0">
+                  <i class="ph ph-play text-sm"></i>
+                </div>
+                <div>
+                  <div class="font-bold text-xs sm:text-sm text-white flex items-center space-x-2">
+                    <span>${feed.channelName}</span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-mono ${isPrimary ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40' : 'bg-[#282828] text-[#AAAAAA]'} capitalize">
+                      ${feed.priorityTier}
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#282828] text-[#CCCCCC] font-semibold border border-[#333333]">
+                      ${feed.reliabilityScore}%
+                    </span>
+                  </div>
+                  <div class="text-[11px] text-[#888888] font-mono mt-0.5">
+                    ${feed.protocol.toUpperCase()} &bull; ${feed.channelGroup} &bull; ${feed.language?.name || 'English'}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Attribution Badge -->
+              <span class="self-start sm:self-auto px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#222222] text-[#CCCCCC] border border-[#333333] truncate max-w-xs">
+                ${feed.provenance?.attributionBadge || 'Exclusive'}
+              </span>
+            </div>
+
+            <!-- ClearKey Box if applicable -->
+            ${clearKeyBox}
+
+            <!-- Multi-Bitrate Renditions Selector -->
+            ${feed.renditions && feed.renditions.length > 0 ? `
+              <div class="rounded-lg bg-[#141414] p-2.5 border border-[#282828] space-y-1.5">
+                <div class="text-[10px] font-semibold text-[#888888] uppercase tracking-wider flex items-center justify-between font-mono">
+                  <span class="flex items-center space-x-1">
+                    <i class="ph ph-sliders text-xs text-[#CCCCCC]"></i>
+                    <span>Quality Renditions</span>
+                  </span>
+                  <span class="text-[9px] text-[#666666]">Proxied & Extracted</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${feed.renditions.map(r => `
+                    <div class="inline-flex items-center rounded-lg border border-[#2E2E2E] bg-[#1E1E1E] text-[11px] font-mono overflow-hidden">
+                      <button 
+                        onclick="playStreamInDrawer('${r.url}', '${feed.channelName.replace(/'/g, "\\'")} [${r.qualityTag}]', '${feed.protocol}')"
+                        class="px-2.5 py-1 hover:bg-[#CCCCCC] hover:text-[#101010] transition font-medium text-[#CCCCCC] flex items-center space-x-1"
+                        title="Play in drawer locked to ${r.qualityTag}"
+                      >
+                        <span>${r.qualityTag}</span>
+                        ${r.fps ? `<span class="text-[9px] opacity-70">${r.fps}fps</span>` : ''}
+                      </button>
+                      <button 
+                        onclick="copyText('${r.url}', '${r.qualityTag} URL Copied!')"
+                        class="px-1.5 py-1 border-l border-[#2E2E2E] text-[#777777] hover:text-white hover:bg-[#282828] transition"
+                        title="Copy ${r.qualityTag} stream URL"
+                      >
+                        <i class="ph ph-copy text-[11px]"></i>
+                      </button>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- URLs display -->
+            <div class="text-[11px] font-mono bg-[#141414] rounded-lg p-2.5 border border-[#282828] truncate text-[#888888]" title="${feed.network.masterPlaylistUrl}">
+              <strong class="text-[#CCCCCC] font-sans">Stream:</strong> ${feed.network.masterPlaylistUrl}
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2 pt-1">
+              <button 
+                onclick="playStreamInDrawer('${feed.network.edgeProxyFallbackUrl}', '${feed.channelName.replace(/'/g, "\\'")}', '${feed.protocol}')"
+                class="px-3.5 py-1.5 rounded-xl bg-[#CCCCCC] hover:bg-white text-[#101010] text-xs font-semibold flex items-center space-x-1.5 shadow-sm transition"
+              >
+                <i class="ph ph-play-fill text-xs"></i>
+                <span>Watch Stream</span>
+              </button>
+
+              <button 
+                onclick="copyText('${feed.network.edgeProxyFallbackUrl}', 'Proxy URL Copied!')"
+                class="px-3 py-1.5 rounded-xl border border-[#2E2E2E] bg-[#222222] hover:bg-[#2A2A2A] hover:border-[#CCCCCC] text-[#CCCCCC] hover:text-white text-xs font-medium flex items-center space-x-1.5 transition"
+                title="Copy CORS-safe proxy URL for VLC or external players"
+              >
+                <i class="ph ph-copy text-xs"></i>
+                <span>Copy Proxy Link</span>
+              </button>
+
+              <button 
+                onclick="copyText('${feed.network.masterPlaylistUrl}', 'Direct Stream URL Copied!')"
+                class="px-3 py-1.5 rounded-xl border border-[#2E2E2E] bg-[#222222] hover:bg-[#2A2A2A] hover:border-[#CCCCCC] text-[#CCCCCC] hover:text-white text-xs font-medium flex items-center space-x-1.5 transition"
+                title="Copy raw master playlist URL"
+              >
+                <i class="ph ph-link text-xs"></i>
+                <span>Raw URL</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function playStreamInDrawer(proxyUrl, channelName, protocol) {
+      const fullUrl = proxyUrl.startsWith("http") ? proxyUrl : window.location.origin + proxyUrl;
+      const playerBox = document.getElementById("drawer-player-box");
+      const video = document.getElementById("drawer-video-player");
+      const activeChannel = document.getElementById("player-active-channel");
+      const bufferStat = document.getElementById("player-buffer-stat");
+
+      activeChannel.textContent = channelName;
+      playerBox.classList.remove("hidden");
+      playerBox.scrollIntoView({ behavior: "smooth" });
+
+      if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+      }
+
+      if (typeof Hls !== "undefined" && Hls.isSupported() && (fullUrl.includes(".m3u8") || protocol === "hls")) {
+        activeHls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+        });
+        activeHls.loadSource(fullUrl);
+        activeHls.attachMedia(video);
+        activeHls.on(Hls.Events.MANIFEST_PARSED, (ev, data) => {
+          video.play().catch(() => {});
+        });
+        activeHls.on(Hls.Events.LEVEL_SWITCHED, (ev, data) => {
+          const lvl = activeHls.levels[data.level];
+          if (lvl) {
+            document.getElementById("player-active-res").textContent = `${lvl.width}x${lvl.height}`;
+          }
+        });
+
+        // Periodic buffer checker
+        const interval = setInterval(() => {
+          if (!activeHls || video.paused) {
+            clearInterval(interval);
+            return;
+          }
+          if (video.buffered.length > 0) {
+            const b = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+            bufferStat.textContent = `Buffer: ${Math.max(0, b).toFixed(1)}s`;
+          }
+        }, 1000);
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = fullUrl;
+        video.play().catch(() => {});
+      } else {
+        showToast("DASH ClearKey stream loaded (Use Shaka / ExoPlayer for DRM playback)");
+      }
+    }
+
+    function stopPlayback() {
+      const video = document.getElementById("drawer-video-player");
+      video.pause();
+      if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+      }
+      document.getElementById("drawer-player-box").classList.add("hidden");
+    }
+
+    function closeDrawer() {
+      stopPlayback();
+      document.getElementById("stream-drawer").classList.add("translate-x-full");
+      document.getElementById("drawer-backdrop").classList.add("hidden");
+    }
+
+    function probeCurrentFixture() {
+      if (activeFixtureKey) {
+        showToast("Probing stream feeds with active latency canary...");
+        loadDrawerFeeds(activeFixtureKey, true);
+      }
+    }
+
+    function copyCanonicalKey() {
+      const key = document.getElementById("drawer-canonical-key").textContent;
+      copyText(key, "Canonical Key Copied!");
+    }
+
+    function copyText(text, message = "Copied to clipboard!") {
+      navigator.clipboard.writeText(text);
+      showToast(message);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById("app-toast");
+      const msgEl = document.getElementById("toast-message");
+      msgEl.textContent = msg;
+      toast.classList.remove("hidden");
+      setTimeout(() => toast.classList.remove("translate-y-2"), 10);
+      setTimeout(() => {
+        toast.classList.add("translate-y-2");
+        setTimeout(() => toast.classList.add("hidden"), 300);
+      }, 2500);
+    }
+
+    function handleSearch(val) {
+      currentFilter.search = val.trim();
+      const clearBtn = document.getElementById("search-clear-btn");
+      if (clearBtn) {
+        if (currentFilter.search) clearBtn.classList.remove("hidden");
+        else clearBtn.classList.add("hidden");
+      }
+      renderCatalog();
+    }
+
+    function clearSearch() {
+      document.getElementById("search-input").value = "";
+      const mInput = document.getElementById("mobile-search-input");
+      if (mInput) mInput.value = "";
+      handleSearch("");
+    }
+
+    function setPhaseFilter(phase) {
+      currentFilter.phase = phase;
+      document.querySelectorAll(".phase-btn").forEach(btn => {
+        btn.className = "phase-btn px-3 py-1.5 rounded-lg text-[#888888] hover:text-white transition flex items-center space-x-1.5";
+      });
+      const activeBtn = document.getElementById(`tab-${phase}`);
+      if (activeBtn) {
+        activeBtn.className = "phase-btn px-3 py-1.5 rounded-lg bg-[#2A2A2A] text-white font-semibold border border-[#3A3A3A] transition flex items-center space-x-1.5";
+      }
+      renderCatalog();
+    }
+
+    function setSportFilter(sport, eventObj) {
+      currentFilter.sport = sport;
+      document.querySelectorAll(".sport-chip").forEach(c => {
+        c.className = "sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#2A2A2A] bg-[#1C1C1C] text-[#CCCCCC] hover:border-[#404040] hover:text-white transition flex items-center space-x-1.5";
+      });
+      const target = (eventObj && eventObj.target) || (window.event && window.event.target);
+      const chip = target ? target.closest(".sport-chip") : null;
+      if (chip) {
+        chip.className = "sport-chip shrink-0 px-3 py-1.5 rounded-xl border border-[#CCCCCC] bg-[#CCCCCC] text-[#101010] font-semibold transition flex items-center space-x-1.5";
+      }
+      
+      const labelEl = document.getElementById("filter-status-label");
+      labelEl.innerHTML = `<i class="ph ph-funnel text-xs text-[#CCCCCC]"></i><span>${sport ? `Showing ${sport.charAt(0).toUpperCase() + sport.slice(1)}` : "Showing All Sports"}</span>`;
+      renderCatalog();
+    }
+
+    function applySorting(sortVal) {
+      currentFilter.sort = sortVal;
+      renderCatalog();
+    }
+
+    function clearAllFilters() {
+      currentFilter = { phase: "all", sport: "", search: "", sort: "status_first" };
+      document.getElementById("search-input").value = "";
+      setPhaseFilter("all");
+      renderCatalog();
+    }
+
+    function refreshCatalog() {
+      fetchCatalogData();
+      showToast("Refreshed catalog feeds from 6 providers!");
+    }
+
+    function startAutoRefresh() {
+      // Background catalog sync every 60s
+      setInterval(fetchCatalogData, 60000);
+    }
+
+    function loadMockCatalog() {
+      allFixtures = [
+        {
+          canonicalKey: "cricket::ipl::2026",
+          kind: "tournament_channel",
+          sport: "cricket",
+          title: "Indian Premier League (IPL) 2026",
+          schedule: { isLive: true },
+          tournament: { name: "Indian Premier League", shortName: "IPL T20", category: "T20 League" },
+          teams: null,
+          streamMetadata: { totalWorkingFeeds: 3, maxResolution: "1080p FHD", availableLanguages: ["eng", "hin"] },
+          providerPointers: { cricify: "p1", sportzx: "p2", sktech: "p3" }
+        },
+        {
+          canonicalKey: "cricket::ind-vs-nz::2026",
+          kind: "match",
+          sport: "cricket",
+          title: "New Zealand vs India (3rd ODI)",
+          schedule: { isLive: true },
+          teams: { teamA: { name: "New Zealand", code: "NZ" }, teamB: { name: "India", code: "IND" } },
+          streamMetadata: { totalWorkingFeeds: 4, maxResolution: "1080p FHD 50fps", availableLanguages: ["eng", "hin", "tam"] },
+          providerPointers: { livxow: "p1", playztv: "p2", cricify: "p3", playfy: "p4" }
+        },
+        {
+          canonicalKey: "motorsport::formula-1::2026",
+          kind: "tournament_channel",
+          sport: "motorsport",
+          title: "Formula 1 Las Vegas Grand Prix",
+          schedule: { isLive: true },
+          tournament: { name: "Formula 1", shortName: "Formula 1", category: "Motorsport Championship" },
+          teams: null,
+          streamMetadata: { totalWorkingFeeds: 2, maxResolution: "1080p FHD", availableLanguages: ["eng"] },
+          providerPointers: { livxow: "p1", playfy: "p2" }
+        },
+        {
+          canonicalKey: "football::bar-vs-rma::2026",
+          kind: "match",
+          sport: "football",
+          title: "Real Madrid vs Barcelona (El Clasico)",
+          schedule: { isLive: false },
+          teams: { teamA: { name: "Real Madrid", code: "RMA" }, teamB: { name: "Barcelona", code: "BAR" } },
+          streamMetadata: { totalWorkingFeeds: 3, maxResolution: "1080p FHD", availableLanguages: ["eng", "es"] },
+          providerPointers: { sportzx: "p1", playfy: "p2" }
+        }
+      ];
+      updateCounts();
+      renderCatalog();
+    }
+
+    // Auto-initialize
+    window.addEventListener("DOMContentLoaded", initPortal);
+  </script>
+</body>
+</html>
