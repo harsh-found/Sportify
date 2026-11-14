@@ -101,7 +101,7 @@
           </div>
           <div class="flex items-baseline space-x-2">
             <span class="text-base font-bold tracking-tight text-white group-hover:text-[#CCCCCC] transition">Sportify Gateway</span>
-            <span class="text-xs px-2 py-0.5 rounded border border-[#383838] text-[#CCCCCC] bg-[#222222] font-mono">v1.0.0</span>
+            <span class="text-xs px-2 py-0.5 rounded border border-[#383838] text-[#CCCCCC] bg-[#222222] font-mono">v1.1.0</span>
           </div>
         </a>
       </div>
@@ -747,7 +747,7 @@
         <div>
           <div class="text-xs font-semibold tracking-wider uppercase text-[#CCCCCC]">API Documentation</div>
           <h2 class="text-xl font-bold tracking-tight text-white mt-1">REST Endpoints Specification</h2>
-          <p class="text-xs text-[#A1A1AA] mt-0.5">Strictly typed endpoints following Sportify Live Sports Gateway v1.0.0.</p>
+          <p class="text-xs text-[#A1A1AA] mt-0.5">Strictly typed endpoints following Sportify Live Sports Gateway v1.1.0.</p>
         </div>
         <div class="text-xs text-[#888888] font-mono">Base: http://localhost:3000</div>
       </div>
@@ -833,6 +833,46 @@
               <td class="py-3 px-4 font-mono text-[11px] text-[#888888]">Live Dynamic</td>
             </tr>
 
+            <!-- /api/matches/hot -->
+            <tr class="hover:bg-[#222222]/50 transition">
+              <td class="py-3 px-4 font-mono text-[11px] font-semibold text-white">
+                <span class="text-emerald-400 mr-1.5 font-bold">GET</span> /api/matches/hot
+              </td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#CCCCCC]">sport, limit</td>
+              <td class="py-3 px-4 text-[#CCCCCC]">High-demand marquee fixtures ranked by upstream priority, multi-provider coverage, and live status.</td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#888888]">90s TTL + SWR + ETag</td>
+            </tr>
+
+            <!-- /api/schedule -->
+            <tr class="hover:bg-[#222222]/50 transition">
+              <td class="py-3 px-4 font-mono text-[11px] font-semibold text-white">
+                <span class="text-emerald-400 mr-1.5 font-bold">GET</span> /api/schedule
+              </td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#CCCCCC]">sport, hours</td>
+              <td class="py-3 px-4 text-[#CCCCCC]">Chronological Electronic Program Guide (EPG) grouped by liveNow, startingSoon, upcomingByDate, and recentlyEnded.</td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#888888]">90s TTL + SWR + ETag</td>
+            </tr>
+
+            <!-- /api/epg.xml -->
+            <tr class="hover:bg-[#222222]/50 transition">
+              <td class="py-3 px-4 font-mono text-[11px] font-semibold text-white">
+                <span class="text-purple-400 mr-1.5 font-bold">GET</span> /api/epg.xml
+              </td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#CCCCCC]">sport</td>
+              <td class="py-3 px-4 text-[#CCCCCC]">XMLTV Electronic Program Guide matching <code class="font-mono text-[11px] bg-[#242424] text-[#CCCCCC] px-1 rounded">tvg-id</code> identifiers in <code class="font-mono text-[11px] bg-[#242424] text-[#CCCCCC] px-1 rounded">/api/playlist.m3u</code>.</td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#888888]">5m TTL</td>
+            </tr>
+
+            <!-- /api/streams/inspect -->
+            <tr class="hover:bg-[#222222]/50 transition">
+              <td class="py-3 px-4 font-mono text-[11px] font-semibold text-white">
+                <span class="text-blue-400 mr-1.5 font-bold">GET</span> /api/streams/inspect
+              </td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#CCCCCC]">url, referer, origin, ua</td>
+              <td class="py-3 px-4 text-[#CCCCCC]">Real-time HLS Master/Media and DASH MPD manifest inspector extracting video renditions, audio tracks, and ClearKey KIDs.</td>
+              <td class="py-3 px-4 font-mono text-[11px] text-[#888888]">On-demand Probe</td>
+            </tr>
+
             <!-- /api/live/sse -->
             <tr class="hover:bg-[#222222]/50 transition">
               <td class="py-3 px-4 font-mono text-[11px] font-semibold text-white">
@@ -856,7 +896,7 @@
         <i class="ph ph-broadcast text-[#CCCCCC] text-sm"></i>
         <span class="font-semibold text-white">Sportify Live Sports Gateway</span>
         <span>&bull;</span>
-        <span>v1.0.0 High-Availability Engine</span>
+        <span>v1.1.0 High-Availability Engine</span>
       </div>
       <div>
         Built with Bun + Hono + TypeScript &bull; CNC Verse Streaming Core
@@ -874,7 +914,7 @@
     const mockData = {
       "/health": {
         "service": "Sportify Live Sports Gateway",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "architecture": "Edge-Federated Multi-Provider Engine",
         "status": "healthy",
         "providersIntegrated": 6,

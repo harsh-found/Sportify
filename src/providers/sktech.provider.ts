@@ -342,12 +342,49 @@ export class SKTechProvider extends AbstractBaseProvider {
           status: "ONLINE",
         };
 
+        const teamAFlag = (ev.teamAFlag || "").trim() || undefined;
+        const teamBFlag = (ev.teamBFlag || "").trim() || undefined;
+        const eventBanner = (ev.eventBanner || "").trim() || undefined;
+        const eventType = (ev.eventType || "").trim() || undefined;
+        const isHot = ev.isHot === "1" || ev.isHot === true;
+        const priority = typeof ev.priority === "number" ? ev.priority : undefined;
+
+        const formatHints: Array<{ title: string; logo?: string }> = [];
+        const rawHints = ev.link_names || ev.formats;
+        if (Array.isArray(rawHints)) {
+          for (const h of rawHints) {
+            if (typeof h === "string" && h.trim()) {
+              formatHints.push({ title: h.trim() });
+            }
+          }
+        }
+
+        let poster = (ev.eventLogo || eventBanner || "").trim() || undefined;
+        if (!poster && teamA && teamB) {
+          poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
+            `${eventType || ev.category || "Sports"} | ${eventName || "Live"}`
+          )}&teamA=${encodeURIComponent(teamA)}&flagA=${encodeURIComponent(
+            teamAFlag || ""
+          )}&teamB=${encodeURIComponent(teamB)}&flagB=${encodeURIComponent(
+            teamBFlag || ""
+          )}&time=${encodeURIComponent(ev.date && ev.time ? `${ev.date} ${ev.time}` : "LIVE")}`;
+        } else if (!poster) {
+          poster = teamAFlag;
+        }
+
         liveEvents.push({
           id: eventId,
           title: fullTitle,
           category: ev.category || ev.cat || "Sports",
           status: "LIVE",
-          poster: ev.eventLogo || ev.teamAFlag,
+          poster,
+          teamAFlag,
+          teamBFlag,
+          eventBanner,
+          eventType,
+          isHot,
+          priority,
+          formatHints: formatHints.length > 0 ? formatHints : undefined,
           startTime: ev.date && ev.time ? `${ev.date} ${ev.time}` : undefined,
           endTime: ev.end_date && ev.end_time ? `${ev.end_date} ${ev.end_time}` : undefined,
           competition: eventName || undefined,

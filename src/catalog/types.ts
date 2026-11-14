@@ -109,6 +109,7 @@ export const LanguageInfoSchema = z.object({
 export type LanguageInfo = z.infer<typeof LanguageInfoSchema>;
 
 export const RenditionSchema = z.object({
+  id: z.string().optional(),
   qualityTag: z.string(),
   label: z.string().optional(),
   resolution: z.string().optional(),
@@ -122,6 +123,7 @@ export const RenditionSchema = z.object({
 });
 export type Rendition = z.infer<typeof RenditionSchema>;
 export type RenditionVariant = Rendition;
+export type RenditionOption = Rendition;
 
 export const NetworkEndpointsSchema = z.object({
   masterPlaylistUrl: z.string(),

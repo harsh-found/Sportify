@@ -89,4 +89,36 @@ describe("StreamCache", () => {
     expect(cache.getStats().currentBytes).toBe(80);
     expect(cache.getStats().evictions).toBe(1);
   });
+
+  it("supports Stale-While-Revalidate (SWR) instant stale serving with background refresh and weak ETag generation", async () => {
+    const cache = new StreamCache<string>({
+      defaultTtlMs: 30,
+      defaultSwrMs: 200,
+    });
+
+    cache.set("swr_key", "v1_initial");
+    const etag1 = cache.getEtag("swr_key");
+    expect(etag1).toStartWith('W/"');
+
+    // Wait for primary TTL (30ms) to expire while remaining within SWR window (200ms)
+    await new Promise((r) => setTimeout(r, 45));
+
+    let refreshed = false;
+    const immediateResult = await cache.getOrFetch("swr_key", async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      refreshed = true;
+      return "v2_refreshed";
+    });
+
+    // Must return stale value immediately without blocking on the 20ms fetcher
+    expect(immediateResult).toBe("v1_initial");
+    expect(cache.getStats().staleServed).toBe(1);
+
+    // Wait for background revalidation to finish
+    await new Promise((r) => setTimeout(r, 35));
+    expect(refreshed).toBe(true);
+    expect(cache.get("swr_key")).toBe("v2_refreshed");
+    expect(cache.getEtag("swr_key")).not.toBe(etag1);
+  });
 });
+

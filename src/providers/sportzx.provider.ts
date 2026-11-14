@@ -456,13 +456,16 @@ export class SportzxProvider extends AbstractBaseProvider {
 
             for (let idx = 0; idx < eventsArray.length; idx++) {
               const ev = eventsArray[idx];
+              if (ev.publish !== undefined && String(ev.publish) !== "1" && ev.publish !== true) {
+                continue;
+              }
               const meta = ev.event_meta || ev.eventInfo || {};
-              const teamA = meta.teamAName || ev.teamA || "";
-              const teamB = meta.teamBName || ev.teamB || "";
+              const teamA = (meta.teamAName || meta.teamA || ev.teamA || "").trim();
+              const teamB = (meta.teamBName || meta.teamB || ev.teamB || "").trim();
 
-              let fullTitle = ev.match || ev.title || "Live Match";
+              let fullTitle = ev.match || meta.eventName || ev.title || "Live Match";
               if (teamA && teamB && !fullTitle.toLowerCase().includes(" vs ")) {
-                const sub = ev.sub_title || ev.title;
+                const sub = ev.sub_title || meta.eventName || ev.title;
                 fullTitle = sub ? `${teamA} vs ${teamB} (${sub})` : `${teamA} vs ${teamB}`;
               }
 
@@ -495,34 +498,107 @@ export class SportzxProvider extends AbstractBaseProvider {
                 }
               }
 
-              const startSec = Number(meta.startTime || 0);
-              const endSec = Number(meta.endTime || 0);
-              const nowSec = Math.floor(Date.now() / 1000);
+              // Parse startTime/endTime supporting both Unix seconds and "yyyy/MM/dd HH:mm:ss Z" (SportzxLiveEventsProvider.kt)
+              const parseSportzxTimeMs = (val: unknown): number => {
+                if (val === undefined || val === null || val === "") return 0;
+                const num = Number(val);
+                if (!Number.isNaN(num) && num > 1_000_000_000) {
+                  return num < 10_000_000_000 ? num * 1000 : num;
+                }
+                const str = String(val).trim();
+                const m = str.match(
+                  /^(\d{4})[/-](\d{2})[/-](\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\s*([+-]\d{2}):?(\d{2}))?$/
+                );
+                if (m) {
+                  const [, y, mo, d, t, tzH, tzM] = m;
+                  const tz = tzH && tzM ? `${tzH}:${tzM}` : "Z";
+                  const parsedMs = Date.parse(`${y}-${mo}-${d}T${t}${tz}`);
+                  if (!Number.isNaN(parsedMs)) return parsedMs;
+                }
+                const fallbackMs = Date.parse(str);
+                return Number.isNaN(fallbackMs) ? 0 : fallbackMs;
+              };
+
+              const startMs = parseSportzxTimeMs(meta.startTime ?? ev.startTime);
+              const endMs = parseSportzxTimeMs(meta.endTime ?? ev.endTime);
+              const nowMs = Date.now();
               let status: "LIVE" | "UPCOMING" | "ENDED" = "LIVE";
-              if (startSec > 0 && endSec > 0) {
-                if (nowSec < startSec - 900) status = "UPCOMING";
-                else if (nowSec > endSec) status = "ENDED";
+              if (startMs > 0) {
+                const effectiveEndMs = endMs > startMs ? endMs : startMs + 4 * 3600 * 1000;
+                if (nowMs < startMs - 900_000) status = "UPCOMING";
+                else if (nowMs > effectiveEndMs) status = "ENDED";
+              }
+
+              const teamAFlag = (meta.teamAFlag || ev.teamAFlag || "").trim() || undefined;
+              const teamBFlag = (meta.teamBFlag || ev.teamBFlag || "").trim() || undefined;
+              const eventBanner = (meta.eventBanner || ev.eventBanner || "").trim() || undefined;
+              const eventType = (meta.eventType || ev.eventType || "").trim() || undefined;
+              const isHot =
+                meta.isHot === "1" ||
+                meta.isHot === true ||
+                ev.isHot === "1" ||
+                ev.isHot === true;
+              const priority = typeof ev.priority === "number" ? ev.priority : undefined;
+
+              const formatHints: Array<{ title: string; logo?: string }> = [];
+              if (Array.isArray(ev.formatsNew)) {
+                for (const fn of ev.formatsNew) {
+                  if (fn && typeof fn === "object" && fn.title) {
+                    formatHints.push({
+                      title: String(fn.title).trim(),
+                      logo: fn.logo ? String(fn.logo).trim() : undefined,
+                    });
+                  }
+                }
+              } else if (Array.isArray(ev.formats)) {
+                for (const f of ev.formats) {
+                  if (typeof f === "string" && f.trim()) {
+                    formatHints.push({ title: f.trim() });
+                  }
+                }
+              }
+
+              let poster =
+                (ev.thumb || meta.eventLogo || ev.eventLogo || eventBanner || "").trim() ||
+                undefined;
+              if (!poster && teamA && teamB) {
+                poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
+                  `${eventType || ev.category || "Sports"} | ${meta.eventName || ev.sub_title || "Live"}`
+                )}&teamA=${encodeURIComponent(teamA)}&flagA=${encodeURIComponent(
+                  teamAFlag || ""
+                )}&teamB=${encodeURIComponent(teamB)}&flagB=${encodeURIComponent(
+                  teamBFlag || ""
+                )}&time=${encodeURIComponent(String(meta.startTime || "LIVE"))}`;
+              } else if (!poster) {
+                poster = teamAFlag;
               }
 
               const eventObj: LiveEvent = {
-                id: `sportzx_dyn_${ev.id || idx}`,
+                id: `sportzx_dyn_${ev.id || ev.slug || idx}`,
                 title: fullTitle,
-                category: ev.category || ev.cat || "Sports",
+                category: meta.eventCategory || ev.category || ev.cat || "Sports",
                 status,
-                poster: ev.thumb || ev.eventLogo || meta.teamAFlag || ev.teamAFlag,
+                poster,
+                teamAFlag,
+                teamBFlag,
+                eventBanner,
+                eventType,
+                isHot,
+                priority,
+                formatHints: formatHints.length > 0 ? formatHints : undefined,
                 startTime:
-                  startSec > 0
-                    ? new Date(startSec * 1000).toISOString()
+                  startMs > 0
+                    ? new Date(startMs).toISOString()
                     : ev.date && ev.time
                     ? `${ev.date} ${ev.time}`
                     : undefined,
                 endTime:
-                  endSec > 0
-                    ? new Date(endSec * 1000).toISOString()
+                  endMs > 0
+                    ? new Date(endMs).toISOString()
                     : ev.end_date && ev.end_time
                     ? `${ev.end_date} ${ev.end_time}`
                     : undefined,
-                competition: ev.sub_title || ev.title || undefined,
+                competition: meta.eventName || ev.sub_title || ev.title || undefined,
                 lastUpdated: new Date().toISOString(),
                 sources,
               };

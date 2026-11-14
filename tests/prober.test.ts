@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { StreamProber, streamProber } from "../src/engine/prober";
+import { StreamProber, streamProber, parseManifestContent } from "../src/engine/prober";
 import { RichStreamFeed } from "../src/catalog/types";
 
 describe("Active Stream Health Prober & Latency Canary", () => {
@@ -108,4 +108,51 @@ describe("Active Stream Health Prober & Latency Canary", () => {
 
     server.stop();
   });
+
+  test("parseManifestContent extracts real video renditions and audio tracks from HLS Master playlist", () => {
+    const hlsMaster = `#EXTM3U
+#EXT-X-VERSION:4
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud1",NAME="English",LANGUAGE="eng",DEFAULT=YES
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud1",NAME="Hindi",LANGUAGE="hin",DEFAULT=NO
+#EXT-X-STREAM-INF:BANDWIDTH=6200000,RESOLUTION=1920x1080,FRAME-RATE=50.000,CODECS="avc1.64002a,mp4a.40.2",AUDIO="aud1"
+1080p/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=3100000,RESOLUTION=1280x720,FRAME-RATE=50.000,CODECS="avc1.4d401f,mp4a.40.2",AUDIO="aud1"
+720p/index.m3u8
+`;
+    const parsed = parseManifestContent(hlsMaster, "HLS", "https://cdn.example.com/live/master.m3u8");
+    expect(parsed.manifestType).toBe("HLS_MASTER");
+    expect(parsed.isLiveStream).toBe(true);
+    expect(parsed.renditions.length).toBe(2);
+    expect(parsed.renditions[0].qualityTag).toBe("1080p");
+    expect(parsed.renditions[0].resolution).toBe("1920x1080");
+    expect(parsed.renditions[0].bandwidthKbps).toBe(6200);
+    expect(parsed.renditions[0].fps).toBe(50);
+    expect(parsed.renditions[0].url).toBe("https://cdn.example.com/live/1080p/index.m3u8");
+    expect(parsed.renditions[1].qualityTag).toBe("720p");
+    expect(parsed.audioTracks.map((a) => a.language)).toEqual(["eng", "hin"]);
+  });
+
+  test("parseManifestContent extracts representations and ClearKey KIDs from DASH MPD XML", () => {
+    const dashMpd = `<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:cenc="urn:mpeg:cenc:2013" type="dynamic">
+  <Period id="0">
+    <AdaptationSet mimeType="video/mp4">
+      <ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc" cenc:default_KID="1994b1df-7dfd-2e8a-8d7b-9bf3fb900285"/>
+      <Representation id="v1080" width="1920" height="1080" bandwidth="5500000" frameRate="60/1" codecs="avc1.640028"/>
+      <Representation id="v540" width="960" height="540" bandwidth="1800000" frameRate="30" codecs="avc1.4d401f"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="audio/mp4" lang="eng"/>
+  </Period>
+</MPD>`;
+    const parsed = parseManifestContent(dashMpd, "DASH", "https://cdn.example.com/live/manifest.mpd");
+    expect(parsed.manifestType).toBe("DASH_MPD");
+    expect(parsed.isLiveStream).toBe(true);
+    expect(parsed.detectedClearKeyKids).toContain("1994b1df7dfd2e8a8d7b9bf3fb900285");
+    expect(parsed.renditions.length).toBe(2);
+    expect(parsed.renditions[0].qualityTag).toBe("1080p");
+    expect(parsed.renditions[0].fps).toBe(60);
+    expect(parsed.renditions[1].qualityTag).toBe("540p");
+    expect(parsed.audioTracks.map((a) => a.language)).toContain("eng");
+  });
 });
+

@@ -6,6 +6,7 @@ import {
   generateCanonicalKey,
   buildUnifiedCatalog,
   buildRichStreamFeeds,
+  scoreSearchQuery,
 } from "../src/catalog/normalizer";
 import { LiveEvent } from "../src/core/types";
 
@@ -461,7 +462,58 @@ describe("Catalog Normalizer & Provenance Engine", () => {
     expect(feeds[0].provenance.primaryProvider).toBe("cricify");
     expect(feeds[0].provenance.mirroredProviders).toEqual(["sportzx"]);
   });
+
+  test("scoreSearchQuery ranks exact, prefix, multi-token, and 1-edit-distance typo queries accurately", () => {
+    const exact = scoreSearchQuery("IND", ["IND", "India"]);
+    const prefix = scoreSearchQuery("Ind", ["India vs Australia"]);
+    const multiToken = scoreSearchQuery("India Australia", ["Australia vs India - 1st Test"]);
+    const typo = scoreSearchQuery("Crickt", ["Cricket World Cup"]);
+    const unrelated = scoreSearchQuery("Basketball", ["India vs New Zealand"]);
+
+    expect(exact).toBe(100);
+    expect(prefix).toBeGreaterThanOrEqual(80);
+    expect(multiToken).toBeGreaterThanOrEqual(70);
+    expect(typo).toBeGreaterThanOrEqual(45);
+    expect(unrelated).toBe(0);
+  });
+
+  test("buildUnifiedCatalog preserves upstream teamAFlag/teamBFlag logos, isHotMatch, and formatHints", () => {
+    const hotEvent: LiveEvent = {
+      id: "cricify_hot_1",
+      title: "India vs Pakistan - Final",
+      category: "Cricket",
+      status: "LIVE",
+      isHot: true,
+      priority: 95,
+      teamAFlag: "https://cdn.flags.com/ind.png",
+      teamBFlag: "https://cdn.flags.com/pak.png",
+      eventBanner: "https://cdn.banners.com/ind-vs-pak.jpg",
+      formatHints: [
+        { title: "1080p FHD" },
+        { title: "720p HD" },
+      ],
+      sources: [
+        {
+          provider: "cricify",
+          quality: "1080p",
+          format: "HLS",
+          streamUrl: "https://cdn.stream.com/master.m3u8",
+        },
+      ],
+    };
+
+    const catalog = buildUnifiedCatalog([hotEvent]);
+    expect(catalog.length).toBe(1);
+    const fix = catalog[0];
+    expect(fix.isHotMatch).toBe(true);
+    expect(fix.phase).toBe("live");
+    expect(fix.teams?.teamA.logo).toBe("https://cdn.flags.com/ind.png");
+    expect(fix.teams?.teamB.logo).toBe("https://cdn.flags.com/pak.png");
+    expect(fix.posterUrl).toBe("https://cdn.banners.com/ind-vs-pak.jpg");
+    expect(fix.streamMetadata.totalWorkingFeeds).toBeGreaterThanOrEqual(2);
+  });
 });
+
 
 
 

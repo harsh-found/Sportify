@@ -3,6 +3,41 @@ import { aggregatorService } from "../services/aggregator.service";
 
 export const streamProvenanceRoute = new Hono();
 
+// GET /api/streams/inspect?url=...&referer=...&userAgent=...
+streamProvenanceRoute.get("/inspect", async (c) => {
+  const targetUrl = c.req.query("url");
+  if (!targetUrl || !targetUrl.trim()) {
+    return c.json(
+      {
+        success: false,
+        version: "1.1.0",
+        error: {
+          code: "MISSING_STREAM_URL",
+          message: "Query parameter 'url' is required (e.g., /api/streams/inspect?url=https://example.com/master.m3u8)",
+        },
+      },
+      400
+    );
+  }
+
+  const headers: Record<string, string> = {};
+  const referer = c.req.query("referer");
+  const origin = c.req.query("origin");
+  const userAgent = c.req.query("userAgent") || c.req.query("ua");
+  if (referer) headers["Referer"] = referer;
+  if (origin) headers["Origin"] = origin;
+  if (userAgent) headers["User-Agent"] = userAgent;
+
+  const inspection = await aggregatorService.inspectStream(targetUrl.trim(), headers);
+
+  return c.json({
+    success: true,
+    version: "1.1.0",
+    inspection,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // GET /api/stream/:fixtureKey?probe=true&protocol=dash|hls&quality=1080p&language=hin&provider=cricify
 streamProvenanceRoute.get("/:fixtureKey", async (c) => {
   const fixtureKey = decodeURIComponent(c.req.param("fixtureKey"));
@@ -27,6 +62,7 @@ streamProvenanceRoute.get("/:fixtureKey", async (c) => {
     return c.json(
       {
         success: false,
+        version: "1.1.0",
         error: `No live feeds found for fixture '${fixtureKey}'`,
       },
       404
@@ -35,6 +71,7 @@ streamProvenanceRoute.get("/:fixtureKey", async (c) => {
 
   return c.json({
     success: true,
+    version: "1.1.0",
     fixtureKey,
     fixtureTitle: fixture?.title || fixtureKey,
     kind: fixture?.kind || "match",

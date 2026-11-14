@@ -1,113 +1,86 @@
-# Sportify Live Sports & Stream Aggregation API (`v1.0.0`)
+# Sportify Live Sports & Stream Aggregation API (`v1.1.0`)
 
-**Sportify `v1.0.0`** is a high-availability, edge-federated sports data and live stream aggregation API platform built with **Bun**, **Hono**, and **TypeScript**. It queries six reverse-engineered CloudStream3 (`.cs3`) providers concurrently, decrypts upstream payloads in memory using their exact native ciphers, reconciles inconsistent event metadata into order-independent canonical fixtures, deduplicates multi-provider streams without losing ClearKey DRM or HTTP header provenance, and serves sub-millisecond cached responses.
-
----
-
-## Key Capabilities
-
-1. **Six CS3 Providers Reverse-Engineered & Federated**:
-   - **Cricify (`cricify`)**: Firebase Remote Config (`963020218535` / `com.cricfy.tv`), Primary/Dex-Secondary/Legacy-Secondary AES-128-CBC + `EnvelopeCrypto`, `/cats.txt` + `/categories/live-events.txt` + `/channels/{slug}.txt`, and curated M3U mirrors.
-   - **Sportzx (`sportzx`)**: Exact `SXR3` ChaCha20-variant sponge stream cipher & 128-bit MAC tag verifier (`decryptV3`), AES-128-CBC fallbacks (`decryptFallback`, `decryptFallback2`), Firebase Remote Config (`234785582029` / `com.sportzxtv.app`), `/events.json` + `/channels/{id}.json`.
-   - **PlayFy (`playfy`)**: Dalvik bytecode 32-bit FNV-1a key/IV derivation (`0x811c9dc5` -> `"BR4weRP=5A/Y&8%5"` / `"Va+XYCKnkinUMDvk"`), `{"data":"..."}` envelope unwrapping, Firebase Remote Config (`239487160038` / `com.playfytv.app`), `/cats/live-events.json` + `/cc.json` + `/channels/{id}.json`.
-   - **SKTech (`sktech`)**: 256-byte Lookup Table D (`decryptLegacyLookup`), V23 substitution (`decryptV23`), 64-char hex header stripping, `[{"event":"..."}]` / `[{"cat":"..."}]` wrapper parsing, Firebase Remote Config (`330162934410` / `com.live.sktechtv`).
-   - **PlayZTV (`playztv`)**: Reverse bytes + adjacent byte-pair swap + AES-128-CBC, Firebase Remote Config (`516859456626` / `com.playztv.app`), `/events.txt` + `/categories.txt` + `/channels/{id}.txt`.
-   - **LivXow (`livxow`)**: Multi-pass substitution cipher + Base64url `pro/*.txt` stream resolution + AES-128-CBC, Firebase Remote Config (`459539398637` / `com.livxow.app`).
-
-2. **Advanced Event Identity, Franchise Inference & Disambiguation**:
-   - **Order-Independent Canonical Keys**: `"New Zealand vs India"`, `"IND vs NZ"`, and `"NZ vs IN"` automatically resolve to `cricket::ind-vs-nz::YYYY-MM-DD`.
-   - **Franchise-to-League Inference**: Matches containing only franchise names (e.g., `"Adelaide Strikers Women vs Sydney Sixers Women"` or `"CSK vs MI"`) automatically infer their parent tournament (`Women's Big Bash League (WBBL)` or `Indian Premier League (IPL)`).
-   - **Strict Disambiguation**: Men's, Women's (`INDW` vs `AUSW`), Under-19 (`INDU19` vs `AUSU19`), A-Teams (`INDA`), and distinct match numbers (`1st ODI` vs `2nd ODI`) never falsely merge.
-   - **Zero Fake Teams**: League/tournament broadcast channels (e.g., `"Nepal Premier League"`, `"NPL vs NPL"`, `"Formula 1"`) are classified as `kind: "tournament_channel"` with `teams: null`.
-
-3. **Lossless Stream Deduplication & ClearKey DRM Merging**:
-   - Normalizes stream URLs across providers (stripping ephemeral cache-buster parameters while preserving signed stream tokens).
-   - Merges ClearKey DRM hex `kid:key` pairs, `licenseUrl`, and required upstream HTTP headers (`Referer`, `Origin`, `User-Agent`, `Cookie`) across mirrored feeds.
-   - Tracks full multi-provider attribution (`primaryProvider`, `mirroredProviders`, `sourceList`, `attributionBadge`, `reliabilityScore`).
-
-4. **Built-In HLS/DASH Edge Reverse Proxy & IPTV M3U8 Generator**:
-   - `/api/proxy` spoofs upstream headers, rewrites relative child manifests and media segments on-the-fly, supports dynamic variant filtering (`?quality=1080p`), and automatically fails over to a backup mirror (`&fallback=...`) on upstream `403`/`404`/`5xx` or timeout.
-   - `/api/playlist.m3u` generates standards-compliant IPTV playlists with `#KODIPROP` ClearKey directives and `#EXTVLCOPT` headers for TiviMate, OTT Navigator, Kodi, and VLC.
+**Sportify `v1.1.0`** is a high-availability, edge-federated sports data and live stream aggregation API platform built with **Bun**, **Hono**, and **TypeScript**. It queries six reverse-engineered CloudStream3 (`.cs3`) providers concurrently, decrypts upstream payloads in memory using their exact native ciphers, reconciles inconsistent event metadata into order-independent canonical fixtures, parses real HLS/DASH manifests for video renditions and ClearKey DRM, and serves sub-millisecond O(1) indexed & Stale-While-Revalidate (SWR) cached responses.
 
 ---
 
-## Project Architecture
+## What's New in `v1.1.0`
 
-```text
-/src
-  ├── index.ts                      # Hono application gateway, middleware & route mounting
-  ├── core/
-  │   └── types.ts                  # Core Zod schemas (LiveEvent, Channel, StreamSource, DRMConfig)
-  ├── catalog/
-  │   ├── types.ts                  # Normalized catalog, team, tournament & RichStreamFeed schemas
-  │   └── normalizer.ts             # Event entity parser, franchise inference & stream deduplication
-  ├── engine/
-  │   ├── cache.ts                  # Bounded LRU + TTL cache with Singleflight stampede protection
-  │   ├── circuit-breaker.ts        # 3-state (CLOSED / OPEN / HALF_OPEN) provider fault isolation
-  │   ├── normalizer.ts             # Cross-provider LiveEvent deduplication
-  │   └── prober.ts                 # Live stream canary health prober & manifest validator
-  ├── parsers/
-  │   ├── drm.helper.ts             # ClearKey hex/Base64url normalization & lossless DRM merging
-  │   └── m3u.parser.ts             # M3U8 #EXTINF / #KODIPROP / #EXTVLCOPT parser
-  ├── providers/
-  │   ├── base.provider.ts          # BaseProvider with circuit breaker & timeout enforcement
-  │   ├── cricify.provider.ts       # Cricify CS3 adapter
-  │   ├── sportzx.provider.ts       # Sportzx CS3 adapter (SXR3 ChaCha20 sponge + MAC)
-  │   ├── playfy.provider.ts        # PlayFy CS3 adapter (FNV-1a 32-bit key/IV derivation)
-  │   ├── sktech.provider.ts        # SKTech CS3 adapter (Lookup Table D + V23)
-  │   ├── playztv.provider.ts       # PlayZTV CS3 adapter
-  │   └── livxow.provider.ts        # LivXow CS3 adapter
-  ├── services/
-  │   ├── aggregator.service.ts     # Concurrent 6-provider aggregation, caching & query engine
-  │   └── token-resolver.service.ts # Dynamic token & custom URI resolver
-  ├── routes/
-  │   ├── v1-resources.route.ts     # Resource endpoints (matches, tournaments, teams, channels, etc.)
-  │   ├── catalog.route.ts          # Unified catalog endpoints (/api/catalog)
-  │   ├── sports.route.ts           # Sports summary & detail endpoints (/api/sports)
-  │   ├── stream-provenance.route.ts# Rich stream resolution (/api/stream/:fixtureKey)
-  │   ├── proxy.route.ts            # Edge HLS/DASH reverse proxy (/api/proxy)
-  │   ├── playlist.route.ts         # IPTV M3U8 generator (/api/playlist.m3u)
-  │   ├── live-sse.route.ts         # Real-time Server-Sent Events (/api/live/sse)
-  │   └── docs.route.ts             # OpenAPI 3.1 specification & /docs portal
-  └── utils/
-      ├── crypto.ts                 # AES-128-CBC & byte-transformation primitives
-      ├── envelope-crypto.ts        # Envelope decryption helper
-      ├── firebase-fetcher.ts       # Google Firebase Remote Config REST client
-      └── stream-url.ts             # Pipe-delimited stream URL & proxy query helpers
-```
+1. **Provider Extraction Beyond CS3**:
+   - Extracts upstream country/franchise flags (`teamAFlag`, `teamBFlag`) and attaches them directly to canonical `teams.teamA.logo` and `teams.teamB.logo`.
+   - Extracts upstream hot/marquee status (`isHot`, `priority`, `eventBanner`, `eventType`) and synthesizes dynamic Match Card poster URLs (`generateMatchCardUrl` from `LiveEventsProvider.kt`) when an upstream event omits a poster image.
+   - Extracts multi-bitrate format hints (`formatsNew`, `formats`, `link_names`) across providers to provide accurate feed counts before full stream resolution.
+   - Supports both `"yyyy/MM/dd HH:mm:ss Z"` and Unix epoch timestamp date parsing in `SportzxProvider` (`LiveEventsProvider.kt`).
+
+2. **Real HLS & DASH Manifest Inspection & Rendition Discovery**:
+   - Pure manifest parser (`parseManifestContent`) and live manifest inspector (`inspectManifest` / `GET /api/streams/inspect`) that parses real HLS Master/Media playlists (`#EXT-X-STREAM-INF`, `#EXT-X-MEDIA:TYPE=AUDIO`) and DASH MPD XML (`<Representation>`, `<AdaptationSet>`, `cenc:default_KID`).
+   - Automatically replaces synthetic renditions with real discovered video renditions, audio tracks, and ClearKey KIDs when `?probe=true` is requested on `/api/stream/:fixtureKey`.
+
+3. **O(1) Memoized `CatalogIndex` & Weighted Typo-Tolerant Search (`scoreSearchQuery`)**:
+   - Pre-computes a secondary in-memory index (`byFixtureId`, `byCanonicalKey`, `byProviderPointer`, `bySport`, `byPhase`, `byTournamentId`, `byTeamCode`, `byProvider`, `hotMatches`) whenever the catalog refreshes, turning match/sport/team/tournament/hot lookups into O(1) operations.
+   - Weighted search scoring (`scoreSearchQuery`) ranking exact code/title matches (`100`), prefix matches (`88`), multi-token AND matches (`78`), substring matches (`76`/`62`), and 1-edit-distance Levenshtein typo tolerance (`48`).
+
+4. **Stale-While-Revalidate (SWR) Cache & HTTP `ETag` (`304 Not Modified`)**:
+   - `StreamCache<T>` upgraded with `defaultSwrMs` background refresh so expired keys within the SWR window serve stale data in `<1.5ms` while revalidating asynchronously in the background.
+   - Automatic weak `ETag` (`W/"..."`) generation and `If-None-Match` conditional request handling (`304 Not Modified`) across read-heavy collection endpoints.
+
+5. **New High-Value `v1.1.0` Endpoints**:
+   - `GET /api/matches/hot`: Returns high-demand marquee fixtures ranked by upstream priority, multi-provider coverage, and live status.
+   - `GET /api/schedule` & `GET /api/epg`: Chronological Electronic Program Guide grouped into `liveNow`, `startingSoon`, `upcomingByDate`, and `recentlyEnded`.
+   - `GET /api/epg.xml` & `GET /epg.xml`: Standards-compliant XMLTV Electronic Program Guide matching `tvg-id` identifiers in `/api/playlist.m3u`.
+   - `GET /api/channels/categories`: Aggregated 24/7 channel categories with channel counts, HD counts, and provider attribution.
+   - `GET /api/streams/inspect?url=...`: On-demand real-time HLS/DASH manifest & ClearKey DRM inspector.
 
 ---
 
-## Complete API Endpoint Reference (`v1.0.0`)
+## Six Federated CS3 Providers
+
+| Provider ID | Firebase Project & App Package | Cryptographic & Extraction Pipeline |
+| :--- | :--- | :--- |
+| **`cricify`** | `963020218535` &bull; `com.cricfy.tv` | Primary / Dex-Secondary / Legacy-Secondary AES-128-CBC + `EnvelopeCrypto`, `/cats.txt`, `/categories/live-events.txt`, `/channels/{slug}.txt`, dynamic Match Card poster synthesis |
+| **`sportzx`** | `234785582029` &bull; `com.sportzxtv.app` | `SXR3` ChaCha20-variant sponge cipher + 128-bit MAC tag verifier (`decryptV3`), AES-128-CBC fallbacks, `/events.json`, `/channels/{id}.json`, `formatsNew` & dual date parser |
+| **`playfy`** | `239487160038` &bull; `com.playfytv.app` | Dalvik 32-bit FNV-1a key/IV derivation (`0x811c9dc5`), `{"data":"..."}` envelope unwrapping, `/cats/live-events.json`, `/cc.json`, `/channels/{id}.json` |
+| **`sktech`** | `330162934410` &bull; `com.live.sktechtv` | 256-byte Lookup Table D (`decryptLegacyLookup`), V23 substitution (`decryptV23`), 64-char hex header stripping, `/events.txt`, `/cats.txt`, `/channels/{id}.txt` |
+| **`playztv`** | `516859456626` &bull; `com.playztv.app` | Reverse bytes + adjacent byte-pair swap + AES-128-CBC, `/events.txt`, `/categories.txt`, `/channels/{id}.txt` |
+| **`livxow`** | `459539398637` &bull; `com.livxow.app` | Multi-pass substitution cipher + Base64url `pro/*.txt` stream resolution + AES-128-CBC, `/events.txt`, `/cats.txt` |
+
+---
+
+## Complete API Endpoint Reference (`v1.1.0`)
 
 | Resource Group | Method & Path | Description |
 | :--- | :--- | :--- |
 | **Sports** | `GET /api/sports` | List all active sports with total, live, upcoming fixture counts and tournament counts |
 | **Sports** | `GET /api/sports/:sport` | Detailed sport breakdown with active tournaments, participating teams, and fixtures |
-| **Matches & Events** | `GET /api/matches` | Query normalized matches/events (`sport`, `phase`, `tournament`, `team`, `provider`, `language`, `drm`, `q`, `sort`, `page`, `limit`) |
+| **Matches & Events** | `GET /api/matches` | Query normalized matches/events (`sport`, `phase`, `tournament`, `team`, `provider`, `language`, `drm`, `hot`, `q`, `sort`, `page`, `limit`) |
 | **Matches & Events** | `GET /api/matches/live` | List all currently live matches across all 6 providers |
 | **Matches & Events** | `GET /api/matches/upcoming` | List scheduled upcoming fixtures |
+| **Matches & Events** | `GET /api/matches/hot` | List high-demand marquee matches ranked by priority, multi-provider coverage, and live status |
 | **Matches & Events** | `GET /api/matches/:matchId` | Retrieve full match details and resolved stream feeds by `fixtureId` or `canonicalKey` |
-| **Catalog** | `GET /api/catalog` | Fetch unified catalog of matches and tournament broadcast channels |
+| **Schedule & EPG** | `GET /api/schedule` | Chronological EPG schedule grouped by `liveNow`, `startingSoon`, `upcomingByDate`, and `recentlyEnded` |
+| **Schedule & EPG** | `GET /api/epg.xml` | Standard XMLTV Electronic Program Guide matching `tvg-id`s in `/api/playlist.m3u` |
+| **Catalog** | `GET /api/catalog` | Fetch unified catalog of matches and tournament broadcast channels (supports HTTP `ETag`) |
 | **Catalog** | `GET /api/catalog/:sport` | Filter unified catalog by sport slug |
-| **Tournaments** | `GET /api/tournaments` | List all tournaments/competitions (`IPL`, `WBBL`, `BBL`, `WPL`, `PSL`, `UCL`, `EPL`, `F1`) with fixture and team counts |
+| **Tournaments** | `GET /api/tournaments` | List all tournaments/competitions (`IPL`, `WBBL`, `BBL`, `WPL`, `PSL`, `UCL`, `EPL`, `F1`, `NBA`, `NHL`) with fixture and team counts |
 | **Tournaments** | `GET /api/tournaments/:tournamentId` | Tournament detail, participating teams, and fixtures (`tourn_wbbl`, `wbbl`, `ipl`) |
-| **Teams** | `GET /api/teams` | List canonical teams with gender, age group, franchise league, aliases, and match counts |
+| **Teams** | `GET /api/teams` | List canonical teams with gender, age group, franchise league, logos, aliases, and match counts |
 | **Teams** | `GET /api/teams/:teamCode` | Team profile, known aliases (`IND`, `IN`, `India`), and active fixtures |
 | **Channels** | `GET /api/channels` | Paginated 24/7 live sports and regional TV channels (`category`, `provider`, `q`, `page`, `limit`) |
+| **Channels** | `GET /api/channels/categories` | Normalized channel categories with channel counts, HD counts, and provider attribution |
 | **Channels** | `GET /api/channels/:channelId` | Channel metadata and resolved playable stream feeds |
 | **Broadcasters** | `GET /api/broadcasters` | Aggregated broadcast networks (`Star Sports`, `Sony Sports`, `JioCinema`, `Willow TV`, `Sky Sports`) |
 | **Providers** | `GET /api/providers` | Status, Firebase config, cipher specs, circuit breaker state, and fixture/channel counts for all 6 CS3 providers |
 | **Providers** | `GET /api/providers/:providerId` | Detailed inspection of a single provider and its contributed fixtures/channels |
-| **Streams** | `GET /api/stream/:fixtureKey` | Resolve deduplicated stream feeds with provenance, ClearKey DRM, renditions, and optional `?probe=true` |
+| **Streams** | `GET /api/stream/:fixtureKey` | Resolve deduplicated stream feeds with provenance, ClearKey DRM, real manifest renditions, and optional `?probe=true` |
+| **Streams** | `GET /api/streams/inspect` | On-demand real-time HLS/DASH manifest inspector extracting video renditions, audio tracks, and ClearKey KIDs |
 | **Edge Proxy** | `GET /api/proxy` | CORS-safe HLS/DASH reverse proxy with header injection, manifest rewriting, and automatic failover |
 | **IPTV & SSE** | `GET /api/playlist.m3u` | Generate IPTV M3U8 playlist with `#KODIPROP` ClearKey DRM and `#EXTVLCOPT` headers |
 | **IPTV & SSE** | `GET /api/live/sse` | Real-time Server-Sent Events (SSE) stream for live catalog updates |
-| **Search & Stats** | `GET /api/search?q=...` | Unified cross-resource search across matches, tournaments, teams, and channels |
-| **Search & Stats** | `GET /api/stats` | Comprehensive platform statistics across sports, phases, providers, protocols, caches, and memory |
+| **Search & Stats** | `GET /api/search?q=...` | Weighted tokenized & 1-edit-distance typo-tolerant cross-resource search |
+| **Search & Stats** | `GET /api/stats` | Comprehensive platform statistics across sports, phases, providers, protocols, SWR caches, and memory |
 | **System & UI** | `GET /health` | Gateway health check, circuit breaker states, cache statistics, and endpoint map |
 | **System & UI** | `GET /portal` | Interactive Live Sports Portal & HLS Stream Test Bench |
-| **System & UI** | `GET /docs` | Redesigned `v1.0.0` Developer Documentation Portal & Interactive API Console |
+| **System & UI** | `GET /docs` | `v1.1.0` Developer Documentation Portal & Interactive API Console |
 | **System & UI** | `GET /api/openapi.json` | Full OpenAPI 3.1.0 specification |
 
 ---
@@ -121,7 +94,7 @@ bun install
 # Start development server on port 3000
 bun run dev
 
-# Run complete unit & integration test suite
+# Run complete unit & integration test suite (125 tests across 17 files)
 bun test
 
 # Run latency & throughput benchmark (<2ms cached SLA)

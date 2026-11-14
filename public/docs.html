@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sportify API Documentation — v1.0.0 Developer Reference & Console</title>
-  <meta name="description" content="Official v1.0.0 API Reference, Architecture Guide, JSON Schemas, and Interactive Explorer for the Sportify Live Sports & Stream Aggregation Platform.">
-  <meta property="og:title" content="Sportify API Documentation — v1.0.0 Developer Reference">
+  <title>Sportify API Documentation — v1.1.0 Developer Reference & Console</title>
+  <meta name="description" content="Official v1.1.0 API Reference, Architecture Guide, JSON Schemas, and Interactive Explorer for the Sportify Live Sports & Stream Aggregation Platform.">
+  <meta property="og:title" content="Sportify API Documentation — v1.1.0 Developer Reference">
   <meta property="og:description" content="Complete endpoint reference, CS3 provider extraction architecture, event reconciliation engine, and interactive API console.">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -81,7 +81,7 @@
         <span class="text-sm font-bold tracking-tight text-white">Sportify API</span>
       </a>
       <span class="text-[#3F3F46]">/</span>
-      <span class="font-mono text-xs text-zinc-300 tabular-nums">v1.0.0</span>
+      <span class="font-mono text-xs text-zinc-300 tabular-nums">v1.1.0</span>
       <span class="hidden sm:inline-block font-mono text-[11px] text-emerald-400 uppercase tracking-wider ml-1">Production Release</span>
     </div>
 
@@ -162,12 +162,12 @@
       <!-- 1. System Overview & Telemetry Strip -->
       <section id="section-overview" class="space-y-6 border-b border-[#27272A] pb-10">
         <div class="space-y-2 max-w-3xl">
-          <div class="font-mono text-xs text-zinc-400 uppercase tracking-wider">Sportify Platform Documentation &bull; Release v1.0.0</div>
+          <div class="font-mono text-xs text-zinc-400 uppercase tracking-wider">Sportify Platform Documentation &bull; Release v1.1.0</div>
           <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             Federated Live Sports &amp; Stream Aggregation Engine
           </h1>
           <p class="text-sm text-zinc-400 leading-relaxed">
-            Sportify <code class="font-mono text-zinc-200">v1.0.0</code> is a high-availability sports data and stream aggregation API built on Bun and Hono. It queries six reverse-engineered CloudStream3 (CS3) providers concurrently, decrypts upstream payloads in memory, reconciles inconsistent event titles into order-independent canonical fixtures, deduplicates multi-provider streams without losing ClearKey DRM or HTTP header provenance, and serves sub-millisecond cached responses.
+            Sportify <code class="font-mono text-zinc-200">v1.1.0</code> is a high-availability sports data and stream aggregation API built on Bun and Hono. It queries six reverse-engineered CloudStream3 (CS3) providers concurrently, decrypts upstream payloads in memory, reconciles inconsistent event titles into order-independent canonical fixtures, parses real HLS/DASH manifests for video renditions and ClearKey DRM, and serves sub-millisecond O(1) indexed &amp; Stale-While-Revalidate (SWR) cached responses.
           </p>
         </div>
 
@@ -175,7 +175,7 @@
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A]">
             <div class="text-xs text-zinc-400">Release Version</div>
-            <div class="text-xl font-bold text-white font-mono tabular-nums mt-1">v1.0.0</div>
+            <div class="text-xl font-bold text-white font-mono tabular-nums mt-1">v1.1.0</div>
             <div class="text-[11px] text-zinc-500 font-mono mt-0.5">OpenAPI 3.1.0 Contract</div>
           </div>
           <div class="p-4 rounded-lg bg-[#151518] border border-[#27272A]">
@@ -201,14 +201,16 @@
         <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div>
             <h2 class="text-lg font-bold text-white">Interactive API Request Console</h2>
-            <p class="text-xs text-zinc-400">Test any <code class="font-mono text-zinc-200">v1.0.0</code> endpoint against the live engine and inspect headers, latency, and JSON payloads.</p>
+            <p class="text-xs text-zinc-400">Test any <code class="font-mono text-zinc-200">v1.1.0</code> endpoint against the live engine and inspect headers, latency, and JSON payloads.</p>
           </div>
           <div class="flex flex-wrap gap-1.5 font-mono text-[11px]">
             <button onclick="loadConsolePreset('/api/stats')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/stats</button>
+            <button onclick="loadConsolePreset('/api/matches/hot')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/matches/hot</button>
+            <button onclick="loadConsolePreset('/api/schedule?hours=24')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/schedule</button>
             <button onclick="loadConsolePreset('/api/matches?phase=live&limit=5')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/matches?phase=live</button>
             <button onclick="loadConsolePreset('/api/tournaments?sport=cricket')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/tournaments</button>
             <button onclick="loadConsolePreset('/api/teams/IND')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/teams/IND</button>
-            <button onclick="loadConsolePreset('/api/broadcasters')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/broadcasters</button>
+            <button onclick="loadConsolePreset('/api/channels/categories')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/channels/categories</button>
             <button onclick="loadConsolePreset('/api/providers')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/providers</button>
             <button onclick="loadConsolePreset('/api/search?q=cricket')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300">/api/search?q=cricket</button>
           </div>
@@ -250,10 +252,10 @@
       <section id="section-endpoints" class="space-y-6 border-b border-[#27272A] pb-10">
         <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div>
-            <h2 class="text-lg font-bold text-white">Complete v1.0.0 Endpoint Reference</h2>
-            <p class="text-xs text-zinc-400">Resource-oriented REST architecture covering sports, matches, tournaments, teams, channels, broadcasters, providers, streams, search, and telemetry.</p>
+            <h2 class="text-lg font-bold text-white">Complete v1.1.0 Endpoint Reference</h2>
+            <p class="text-xs text-zinc-400">Resource-oriented REST architecture covering sports, matches, hot fixtures, schedules, XMLTV EPG, tournaments, teams, channels, broadcasters, providers, streams, search, and telemetry.</p>
           </div>
-          <div id="endpoints-count-label" class="font-mono text-xs text-zinc-400 tabular-nums">24 Endpoints Active</div>
+          <div id="endpoints-count-label" class="font-mono text-xs text-zinc-400 tabular-nums">29 Endpoints Active</div>
         </div>
 
         <div id="endpoints-list-container" class="space-y-3">
@@ -371,7 +373,7 @@
             <div class="font-mono text-xs font-semibold text-white">Standardized Error Response Envelope</div>
             <pre class="font-mono text-xs text-zinc-300 bg-[#0E0E10] p-3 rounded border border-[#27272A] overflow-x-auto">{
   "success": false,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "error": {
     "code": "MATCH_NOT_FOUND",
     "message": "No match or fixture found matching identifier 'invalid_id'"
@@ -507,27 +509,32 @@ curl -s "http://localhost:3000/api/search?q=WBBL" | jq '.tournaments, .matches'<
     const ENDPOINT_CATALOG = [
       { group: "sports", method: "GET", path: "/api/sports", summary: "List all active sports with total, live, and upcoming fixture counts and tournament counts." },
       { group: "sports", method: "GET", path: "/api/sports/:sport", summary: "Detailed sport breakdown including active tournaments, participating teams, and fixtures.", sample: "/api/sports/cricket" },
-      { group: "matches", method: "GET", path: "/api/matches", summary: "Query normalized matches and events with filtering by sport, phase, tournament, team, provider, language, DRM, sort, and pagination.", sample: "/api/matches?sport=cricket&limit=10" },
+      { group: "matches", method: "GET", path: "/api/matches", summary: "Query normalized matches and events with filtering by sport, phase, tournament, team, provider, language, DRM, hot, sort, and pagination.", sample: "/api/matches?sport=cricket&limit=10" },
       { group: "matches", method: "GET", path: "/api/matches/live", summary: "Dedicated endpoint returning all currently live matches across all 6 CS3 providers.", sample: "/api/matches/live" },
       { group: "matches", method: "GET", path: "/api/matches/upcoming", summary: "Dedicated endpoint returning scheduled upcoming fixtures.", sample: "/api/matches/upcoming" },
+      { group: "matches", method: "GET", path: "/api/matches/hot", summary: "Return high-demand marquee matches ranked by upstream priority, multi-provider coverage, and live status.", sample: "/api/matches/hot" },
       { group: "matches", method: "GET", path: "/api/matches/:matchId", summary: "Retrieve complete match details and resolved multi-provider stream feeds by fixtureId or canonicalKey." },
+      { group: "matches", method: "GET", path: "/api/schedule", summary: "Chronological Electronic Program Guide (EPG) schedule grouped by liveNow, startingSoon, upcomingByDate, and recentlyEnded.", sample: "/api/schedule?hours=24" },
+      { group: "matches", method: "GET", path: "/api/epg.xml", summary: "Standard XMLTV Electronic Program Guide matching tvg-id identifiers in /api/playlist.m3u.", sample: "/api/epg.xml?sport=cricket" },
       { group: "matches", method: "GET", path: "/api/catalog", summary: "Unified sports catalog (matches and tournament broadcasts) with order-independent canonical keys.", sample: "/api/catalog" },
       { group: "matches", method: "GET", path: "/api/catalog/:sport", summary: "Filter unified sports catalog by sport slug.", sample: "/api/catalog/cricket" },
       { group: "tournaments", method: "GET", path: "/api/tournaments", summary: "List all tournaments and competitions (IPL, WBBL, BBL, WPL, PSL, UCL, EPL, F1) with fixture and team counts.", sample: "/api/tournaments" },
       { group: "tournaments", method: "GET", path: "/api/tournaments/:tournamentId", summary: "Get tournament metadata, participating teams, and fixtures by tournament ID or shortName (e.g. tourn_ipl, wbbl).", sample: "/api/tournaments/tourn_wbbl" },
-      { group: "teams", method: "GET", path: "/api/teams", summary: "List canonical teams with gender, ageGroup, franchise leagueId, aliases, and match counts.", sample: "/api/teams?sport=cricket&limit=25" },
+      { group: "teams", method: "GET", path: "/api/teams", summary: "List canonical teams with gender, ageGroup, franchise leagueId, aliases, logos, and match counts.", sample: "/api/teams?sport=cricket&limit=25" },
       { group: "teams", method: "GET", path: "/api/teams/:teamCode", summary: "Get team profile, known aliases (e.g. IND, IN, India), and active fixtures.", sample: "/api/teams/IND" },
       { group: "channels", method: "GET", path: "/api/channels", summary: "List 24/7 live sports and regional TV channels aggregated across all 6 providers.", sample: "/api/channels?limit=20" },
+      { group: "channels", method: "GET", path: "/api/channels/categories", summary: "List normalized channel categories with channel counts, HD counts, and provider attribution.", sample: "/api/channels/categories" },
       { group: "channels", method: "GET", path: "/api/channels/:channelId", summary: "Resolve channel metadata and playable stream feeds for a specific channel ID." },
       { group: "broadcasters", method: "GET", path: "/api/broadcasters", summary: "List broadcast networks (Star Sports, Sony Sports, JioCinema, Willow TV, Sky Sports) with fixture and channel counts.", sample: "/api/broadcasters" },
       { group: "providers", method: "GET", path: "/api/providers", summary: "Inspect all 6 CS3 providers, Firebase project IDs, cipher algorithms, circuit breaker states, and live fixture counts.", sample: "/api/providers" },
       { group: "providers", method: "GET", path: "/api/providers/:providerId", summary: "Detailed inspection of a single provider (cricify, sportzx, playztv, playfy, sktech, livxow) and its contributed fixtures.", sample: "/api/providers/cricify" },
-      { group: "stream", method: "GET", path: "/api/stream/:fixtureKey", summary: "Resolve deduplicated stream feeds with multi-provider attribution, ClearKey DRM keys, renditions, and optional ?probe=true canary health check." },
+      { group: "stream", method: "GET", path: "/api/stream/:fixtureKey", summary: "Resolve deduplicated stream feeds with multi-provider attribution, ClearKey DRM keys, real manifest renditions, and optional ?probe=true health check." },
+      { group: "stream", method: "GET", path: "/api/streams/inspect", summary: "On-demand HLS Master/Media and DASH MPD manifest inspector extracting video renditions, audio tracks, and ClearKey KIDs." },
       { group: "stream", method: "GET", path: "/api/proxy", summary: "CORS-enabled HLS/DASH edge reverse proxy with header spoofing, child manifest URL rewriting, and automatic mirror failover." },
       { group: "stream", method: "GET", path: "/api/playlist.m3u", summary: "Generate IPTV M3U8 playlist with #KODIPROP ClearKey DRM and #EXTVLCOPT headers.", sample: "/api/playlist.m3u?sport=cricket" },
       { group: "stream", method: "GET", path: "/api/live/sse", summary: "Real-time Server-Sent Events (SSE) stream pushing catalog diffs and provider health telemetry." },
-      { group: "search", method: "GET", path: "/api/search", summary: "Unified cross-resource search across matches, tournaments, teams, and channels.", sample: "/api/search?q=India" },
-      { group: "search", method: "GET", path: "/api/stats", summary: "Comprehensive platform statistics across sports, phases, providers, DRM coverage, caches, and system memory.", sample: "/api/stats" },
+      { group: "search", method: "GET", path: "/api/search", summary: "Weighted tokenized & typo-tolerant cross-resource search across matches, tournaments, teams, and channels.", sample: "/api/search?q=India" },
+      { group: "search", method: "GET", path: "/api/stats", summary: "Comprehensive platform statistics across sports, phases, providers, DRM coverage, SWR caches, and system memory.", sample: "/api/stats" },
       { group: "search", method: "GET", path: "/health", summary: "Gateway health status, provider circuit states, cache hit rates, and endpoint directory.", sample: "/health" }
     ];
 

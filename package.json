@@ -1,6 +1,6 @@
 {
   "name": "sportify-api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sportify High-Availability Live Sports & Stream Aggregator Gateway API",
   "module": "src/index.ts",
   "type": "module",

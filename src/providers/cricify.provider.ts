@@ -287,12 +287,64 @@ export class CricifyProvider extends AbstractBaseProvider {
                 }
               }
 
+              const teamAFlag = (info.teamAFlag || "").trim() || undefined;
+              const teamBFlag = (info.teamBFlag || "").trim() || undefined;
+              const eventBanner = (info.eventBanner || "").trim() || undefined;
+              const eventType = (info.eventType || "").trim() || undefined;
+              const isHot =
+                info.isHot === "1" ||
+                info.isHot === true ||
+                item.isHot === "1" ||
+                item.isHot === true;
+              const priority = typeof item.priority === "number" ? item.priority : undefined;
+
+              let poster =
+                (info.eventLogo || item.image || item.logo || eventBanner || "").trim() ||
+                undefined;
+              if (!poster && info.teamA && info.teamB) {
+                // Matches LiveEventsProvider.kt generateMatchCardUrl()
+                poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
+                  `${eventType || info.eventCat || "Cricket"} | ${info.eventName || "Live"}`
+                )}&teamA=${encodeURIComponent(String(info.teamA).trim())}&flagA=${encodeURIComponent(
+                  teamAFlag || ""
+                )}&teamB=${encodeURIComponent(String(info.teamB).trim())}&flagB=${encodeURIComponent(
+                  teamBFlag || ""
+                )}&time=${encodeURIComponent(String(info.startTime || "LIVE"))}`;
+              } else if (!poster) {
+                poster = teamAFlag;
+              }
+
+              const formatHints: Array<{ title: string; logo?: string }> = [];
+              if (Array.isArray(item.formatsNew)) {
+                for (const fn of item.formatsNew) {
+                  if (fn && typeof fn === "object" && fn.title) {
+                    formatHints.push({
+                      title: String(fn.title).trim(),
+                      logo: fn.logo ? String(fn.logo).trim() : undefined,
+                    });
+                  }
+                }
+              } else if (Array.isArray(item.formats)) {
+                for (const f of item.formats) {
+                  if (typeof f === "string" && f.trim()) {
+                    formatHints.push({ title: f.trim() });
+                  }
+                }
+              }
+
               const eventObj: LiveEvent = {
                 id: `cricify_${slug || liveEvents.length}`,
                 title,
-                category: info.eventCat || item.cat || item.category || "Cricket",
+                category: info.eventCat || info.eventCategory || item.cat || item.category || "Cricket",
                 status,
-                poster: info.eventLogo || item.image || item.logo || info.teamAFlag,
+                poster,
+                teamAFlag,
+                teamBFlag,
+                eventBanner,
+                eventType,
+                isHot,
+                priority,
+                formatHints: formatHints.length > 0 ? formatHints : undefined,
                 startTime: startMs ? new Date(startMs).toISOString() : info.startTime,
                 endTime: endMs ? new Date(endMs).toISOString() : info.endTime,
                 competition: info.eventName || undefined,
@@ -302,7 +354,7 @@ export class CricifyProvider extends AbstractBaseProvider {
 
               if (sources.length > 0) {
                 liveEvents.push(eventObj);
-              } else if (slug && typeof slug === "string" && pendingSlugLookups.length < 8) {
+              } else if (slug && typeof slug === "string" && pendingSlugLookups.length < 16) {
                 pendingSlugLookups.push({ eventObj, slug });
               }
             }

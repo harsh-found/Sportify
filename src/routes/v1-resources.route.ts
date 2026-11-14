@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { aggregatorService } from "../services/aggregator.service";
 
+const API_VERSION = "1.1.0";
+
 export const matchesResourceRoute = new Hono();
 
 // GET /api/matches (or /api/events)
@@ -18,6 +20,8 @@ matchesResourceRoute.get("/", async (c) => {
   const language = c.req.query("language") || c.req.query("lang");
   const drmParam = c.req.query("drm");
   const drm = drmParam === "true" || drmParam === "1" ? true : drmParam === "false" || drmParam === "0" ? false : undefined;
+  const hotParam = c.req.query("hot");
+  const hot = hotParam === "true" || hotParam === "1" ? true : hotParam === "false" || hotParam === "0" ? false : undefined;
   const q = c.req.query("q") || c.req.query("search");
   const sort = (c.req.query("sort") || "status") as "status" | "feeds" | "title" | "time";
   const page = Number(c.req.query("page") || "1") || 1;
@@ -32,6 +36,7 @@ matchesResourceRoute.get("/", async (c) => {
     provider,
     language,
     drm,
+    hot,
     q,
     sort,
     page,
@@ -40,7 +45,7 @@ matchesResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     total: result.total,
     page: result.page,
     limit: result.limit,
@@ -54,6 +59,7 @@ matchesResourceRoute.get("/", async (c) => {
       provider: provider || "all",
       language: language || "all",
       drm: drm ?? null,
+      hot: hot ?? null,
       q: q || null,
       sort,
     },
@@ -86,7 +92,7 @@ matchesResourceRoute.get("/live", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     phase: "live",
     total: result.total,
     page: result.page,
@@ -121,7 +127,7 @@ matchesResourceRoute.get("/upcoming", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     phase: "upcoming",
     total: result.total,
     page: result.page,
@@ -129,6 +135,23 @@ matchesResourceRoute.get("/upcoming", async (c) => {
     totalPages: result.totalPages,
     matches: result.items,
     fixtures: result.items,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// GET /api/matches/hot
+matchesResourceRoute.get("/hot", async (c) => {
+  const sport = c.req.query("sport");
+  const limit = Number(c.req.query("limit") || "25") || 25;
+
+  const items = await aggregatorService.getHotMatches({ sport, limit });
+
+  return c.json({
+    success: true,
+    version: API_VERSION,
+    total: items.length,
+    matches: items,
+    fixtures: items,
     timestamp: new Date().toISOString(),
   });
 });
@@ -144,7 +167,7 @@ matchesResourceRoute.get("/:matchId", async (c) => {
     return c.json(
       {
         success: false,
-        version: "1.0.0",
+        version: API_VERSION,
         error: {
           code: "MATCH_NOT_FOUND",
           message: `No match or fixture found matching identifier '${matchId}'`,
@@ -156,7 +179,7 @@ matchesResourceRoute.get("/:matchId", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     match: detail.fixture,
     fixture: detail.fixture,
     totalFeeds: detail.feeds.length,
@@ -181,7 +204,7 @@ tournamentsResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     totalTournaments: tournaments.length,
     tournaments,
     timestamp: new Date().toISOString(),
@@ -197,7 +220,7 @@ tournamentsResourceRoute.get("/:tournamentId", async (c) => {
     return c.json(
       {
         success: false,
-        version: "1.0.0",
+        version: API_VERSION,
         error: {
           code: "TOURNAMENT_NOT_FOUND",
           message: `No tournament or competition found matching '${tournamentId}'`,
@@ -209,7 +232,7 @@ tournamentsResourceRoute.get("/:tournamentId", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     tournament: detail,
     timestamp: new Date().toISOString(),
   });
@@ -237,7 +260,7 @@ teamsResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     totalTeams: teams.length,
     teams,
     timestamp: new Date().toISOString(),
@@ -253,7 +276,7 @@ teamsResourceRoute.get("/:teamCode", async (c) => {
     return c.json(
       {
         success: false,
-        version: "1.0.0",
+        version: API_VERSION,
         error: {
           code: "TEAM_NOT_FOUND",
           message: `No team found matching code or alias '${teamCode}'`,
@@ -265,7 +288,7 @@ teamsResourceRoute.get("/:teamCode", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     team: detail,
     timestamp: new Date().toISOString(),
   });
@@ -307,13 +330,26 @@ channelsResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     total,
     page,
     limit,
     totalPages,
     channels: items,
     data: items,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// GET /api/channels/categories
+channelsResourceRoute.get("/categories", async (c) => {
+  const categories = await aggregatorService.getChannelCategories();
+
+  return c.json({
+    success: true,
+    version: API_VERSION,
+    totalCategories: categories.length,
+    categories,
     timestamp: new Date().toISOString(),
   });
 });
@@ -329,7 +365,7 @@ channelsResourceRoute.get("/:channelId", async (c) => {
     return c.json(
       {
         success: false,
-        version: "1.0.0",
+        version: API_VERSION,
         error: {
           code: "CHANNEL_NOT_FOUND",
           message: `No channel found with ID '${channelId}'`,
@@ -341,7 +377,7 @@ channelsResourceRoute.get("/:channelId", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     channel: detail,
     timestamp: new Date().toISOString(),
   });
@@ -355,7 +391,7 @@ broadcastersResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     totalBroadcasters: broadcasters.length,
     broadcasters,
     timestamp: new Date().toISOString(),
@@ -370,7 +406,7 @@ providersResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     totalProviders: providers.length,
     providers,
     data: providers,
@@ -387,7 +423,7 @@ providersResourceRoute.get("/:providerId", async (c) => {
     return c.json(
       {
         success: false,
-        version: "1.0.0",
+        version: API_VERSION,
         error: {
           code: "PROVIDER_NOT_FOUND",
           message: `Unknown CS3 provider '${providerId}'. Valid providers: cricify, sportzx, playztv, playfy, sktech, livxow`,
@@ -399,7 +435,7 @@ providersResourceRoute.get("/:providerId", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     provider: detail,
     timestamp: new Date().toISOString(),
   });
@@ -415,7 +451,7 @@ searchResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     ...results,
     timestamp: new Date().toISOString(),
   });
@@ -429,7 +465,35 @@ statsResourceRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.0.0",
+    version: API_VERSION,
     ...stats,
+  });
+});
+
+export const scheduleResourceRoute = new Hono();
+
+// GET /api/schedule (or /api/epg)
+scheduleResourceRoute.get("/", async (c) => {
+  const sport = c.req.query("sport");
+  const date = c.req.query("date");
+  const format = (c.req.query("format") || "json").toLowerCase();
+
+  if (format === "xml" || format === "xmltv") {
+    const xml = await aggregatorService.generateXmltvEpg({ sport });
+    return new Response(xml, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Cache-Control": "public, max-age=60, stale-while-revalidate=120",
+      },
+    });
+  }
+
+  const schedule = await aggregatorService.getSchedule({ sport, date });
+
+  return c.json({
+    success: true,
+    version: API_VERSION,
+    ...schedule,
   });
 });

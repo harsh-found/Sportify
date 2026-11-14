@@ -1,7 +1,7 @@
 import { Channel, LiveEvent, StreamSource } from "../core/types";
 import { StreamCache } from "../engine/cache";
 import { mergeAndDeduplicateEvents } from "../engine/normalizer";
-import { streamProber } from "../engine/prober";
+import { streamProber, ProbeResult } from "../engine/prober";
 import {
   buildUnifiedCatalog,
   buildRichStreamFeeds,
@@ -10,6 +10,7 @@ import {
   detectBroadcaster,
   parseEventEntities,
   generateCanonicalKey,
+  scoreSearchQuery,
   TEAM_ALIASES,
   TOURNAMENT_SIGNATURES,
   PROVIDER_TRUST_RANK,
@@ -22,6 +23,18 @@ import { PlayZTVProvider } from "../providers/playztv.provider";
 import { PlayFyProvider } from "../providers/playfy.provider";
 import { SKTechProvider } from "../providers/sktech.provider";
 import { LivXowProvider } from "../providers/livxow.provider";
+
+export interface CatalogIndex {
+  byFixtureId: Map<string, NormalizedCatalogFixture>;
+  byCanonicalKey: Map<string, NormalizedCatalogFixture>;
+  byProviderPointer: Map<string, NormalizedCatalogFixture>;
+  bySport: Map<string, NormalizedCatalogFixture[]>;
+  byPhase: Map<"live" | "upcoming" | "ended", NormalizedCatalogFixture[]>;
+  byTournamentId: Map<string, NormalizedCatalogFixture[]>;
+  byTeamCode: Map<string, NormalizedCatalogFixture[]>;
+  byProvider: Map<string, NormalizedCatalogFixture[]>;
+  hotMatches: NormalizedCatalogFixture[];
+}
 
 const PROVIDER_TECHNICAL_SPECS: Record<
   string,
@@ -80,17 +93,20 @@ const PROVIDER_TECHNICAL_SPECS: Record<
 export class AggregatorService {
   private providers: Map<string, IProvider> = new Map();
 
-  // High-performance in-memory caches with Singleflight stampede protection
-  private rawEventsCache = new StreamCache<LiveEvent[]>(60000); // 60s TTL for unmerged provider events
-  private eventsCache = new StreamCache<LiveEvent[]>(60000); // 60s TTL for deduplicated events
-  private channelsCache = new StreamCache<Channel[]>(300000); // 5m TTL for channels
-  private resolvedStreamCache = new StreamCache<StreamSource[]>(300000); // 5m TTL for resolved streams
-  private catalogCache = new StreamCache<NormalizedCatalogFixture[]>(60000); // 60s TTL for unified catalog
+  // High-performance in-memory caches with Singleflight stampede protection + Stale-While-Revalidate
+  private rawEventsCache = new StreamCache<LiveEvent[]>({ defaultTtlMs: 60000, defaultSwrMs: 120000 });
+  private eventsCache = new StreamCache<LiveEvent[]>({ defaultTtlMs: 60000, defaultSwrMs: 120000 });
+  private channelsCache = new StreamCache<Channel[]>({ defaultTtlMs: 300000, defaultSwrMs: 300000 });
+  private resolvedStreamCache = new StreamCache<StreamSource[]>({ defaultTtlMs: 300000, defaultSwrMs: 300000 });
+  private catalogCache = new StreamCache<NormalizedCatalogFixture[]>({ defaultTtlMs: 60000, defaultSwrMs: 120000 });
   private fixtureFeedsCache = new StreamCache<{
     fixture: NormalizedCatalogFixture | null;
     feeds: RichStreamFeed[];
-  }>(120000); // 2m TTL for resolved fixture feeds
-  private m3uCache = new StreamCache<string>(60000); // 60s TTL for generated M3U playlists
+  }>({ defaultTtlMs: 120000, defaultSwrMs: 180000 });
+  private m3uCache = new StreamCache<string>({ defaultTtlMs: 60000, defaultSwrMs: 120000 });
+
+  private lastIndexedCatalogRef: NormalizedCatalogFixture[] | null = null;
+  private cachedCatalogIndex: CatalogIndex | null = null;
 
   private refreshTimer?: ReturnType<typeof setInterval>;
 
@@ -104,6 +120,95 @@ export class AggregatorService {
 
     // Start non-blocking background cache warming timer
     this.startBackgroundRefresh(60000);
+  }
+
+  /**
+   * Builds or returns a memoized O(1) multi-key index for the given catalog snapshot.
+   */
+  private getCatalogIndex(catalog: NormalizedCatalogFixture[]): CatalogIndex {
+    if (this.lastIndexedCatalogRef === catalog && this.cachedCatalogIndex) {
+      return this.cachedCatalogIndex;
+    }
+
+    const byFixtureId = new Map<string, NormalizedCatalogFixture>();
+    const byCanonicalKey = new Map<string, NormalizedCatalogFixture>();
+    const byProviderPointer = new Map<string, NormalizedCatalogFixture>();
+    const bySport = new Map<string, NormalizedCatalogFixture[]>();
+    const byPhase = new Map<"live" | "upcoming" | "ended", NormalizedCatalogFixture[]>([
+      ["live", []],
+      ["upcoming", []],
+      ["ended", []],
+    ]);
+    const byTournamentId = new Map<string, NormalizedCatalogFixture[]>();
+    const byTeamCode = new Map<string, NormalizedCatalogFixture[]>();
+    const byProvider = new Map<string, NormalizedCatalogFixture[]>();
+    const hotMatches: NormalizedCatalogFixture[] = [];
+
+    for (const fix of catalog) {
+      byFixtureId.set(fix.fixtureId, fix);
+      byCanonicalKey.set(fix.canonicalKey, fix);
+
+      for (const [prov, ptr] of Object.entries(fix.providerPointers)) {
+        byProviderPointer.set(ptr, fix);
+        const provKey = prov.toLowerCase();
+        const pList = byProvider.get(provKey);
+        if (pList) pList.push(fix);
+        else byProvider.set(provKey, [fix]);
+      }
+
+      const sportKey = fix.sport.toLowerCase();
+      const sList = bySport.get(sportKey);
+      if (sList) sList.push(fix);
+      else bySport.set(sportKey, [fix]);
+
+      const phaseBucket = byPhase.get(fix.schedule.status);
+      if (phaseBucket) phaseBucket.push(fix);
+
+      if (fix.tournament?.id) {
+        const tId = fix.tournament.id.toLowerCase();
+        const tList = byTournamentId.get(tId);
+        if (tList) tList.push(fix);
+        else byTournamentId.set(tId, [fix]);
+      }
+
+      if (fix.teams) {
+        const codeA = fix.teams.teamA.code.toLowerCase();
+        const codeB = fix.teams.teamB.code.toLowerCase();
+        const listA = byTeamCode.get(codeA);
+        if (listA) listA.push(fix);
+        else byTeamCode.set(codeA, [fix]);
+
+        if (codeB !== codeA) {
+          const listB = byTeamCode.get(codeB);
+          if (listB) listB.push(fix);
+          else byTeamCode.set(codeB, [fix]);
+        }
+      }
+
+      if (fix.isHotMatch) {
+        hotMatches.push(fix);
+      }
+    }
+
+    const index: CatalogIndex = {
+      byFixtureId,
+      byCanonicalKey,
+      byProviderPointer,
+      bySport,
+      byPhase,
+      byTournamentId,
+      byTeamCode,
+      byProvider,
+      hotMatches,
+    };
+
+    this.lastIndexedCatalogRef = catalog;
+    this.cachedCatalogIndex = index;
+    return index;
+  }
+
+  public getCatalogEtag(): string | null {
+    return this.catalogCache.getEtag("unified_catalog");
   }
 
   public startBackgroundRefresh(intervalMs = 60000): void {
@@ -179,6 +284,7 @@ export class AggregatorService {
       this.eventsCache.set("all_events", deduplicated, 60000);
       const unified = buildUnifiedCatalog(allEvents);
       this.catalogCache.set("unified_catalog", unified, 60000);
+      this.getCatalogIndex(unified);
       return deduplicated;
     }
 
@@ -210,6 +316,7 @@ export class AggregatorService {
 
   /**
    * Returns the normalized, deduplicated catalog of fixtures across all 6 providers.
+   * Uses O(1) CatalogIndex buckets and weighted fuzzy search scoring.
    */
   async getUnifiedCatalog(options?: {
     sport?: string;
@@ -222,7 +329,9 @@ export class AggregatorService {
       "unified_catalog",
       async () => {
         const rawEvents = await this.fetchAllRawProviderEvents();
-        return buildUnifiedCatalog(rawEvents);
+        const built = buildUnifiedCatalog(rawEvents);
+        this.getCatalogIndex(built);
+        return built;
       },
       60000
     );
@@ -238,35 +347,53 @@ export class AggregatorService {
       return rawCatalog;
     }
 
-    let filtered = rawCatalog;
+    const index = this.getCatalogIndex(rawCatalog);
+    let filtered: NormalizedCatalogFixture[];
 
+    // Start from the most selective O(1) index bucket
     if (options.sport) {
       const targetSport = options.sport.toLowerCase().trim();
-      filtered = filtered.filter((f) => f.sport === targetSport);
+      filtered = [...(index.bySport.get(targetSport) || [])];
+    } else if (options.phase && options.phase !== "all") {
+      filtered = [...(index.byPhase.get(options.phase) || [])];
+    } else if (options.provider) {
+      const targetProvider = options.provider.toLowerCase().trim();
+      filtered = [...(index.byProvider.get(targetProvider) || [])];
+    } else {
+      filtered = [...rawCatalog];
     }
 
-    if (options.phase && options.phase !== "all") {
+    if (options.phase && options.phase !== "all" && options.sport) {
       filtered = filtered.filter((f) => f.schedule.status === options.phase);
     }
 
-    if (options.provider) {
+    if (options.provider && (options.sport || (options.phase && options.phase !== "all"))) {
       const targetProvider = options.provider.toLowerCase().trim();
       filtered = filtered.filter((f) => Boolean(f.providerPointers[targetProvider]));
     }
 
     if (options.search) {
-      const q = options.search.toLowerCase().trim();
-      filtered = filtered.filter(
-        (f) =>
-          f.title.toLowerCase().includes(q) ||
-          f.canonicalKey.toLowerCase().includes(q) ||
-          (f.tournament?.name && f.tournament.name.toLowerCase().includes(q)) ||
-          (f.tournament?.shortName && f.tournament.shortName.toLowerCase().includes(q)) ||
-          (f.teams?.teamA.name && f.teams.teamA.name.toLowerCase().includes(q)) ||
-          (f.teams?.teamB.name && f.teams.teamB.name.toLowerCase().includes(q)) ||
-          (f.teams?.teamA.code && f.teams.teamA.code.toLowerCase() === q) ||
-          (f.teams?.teamB.code && f.teams.teamB.code.toLowerCase() === q)
-      );
+      const q = options.search.trim();
+      const scored = filtered
+        .map((f) => ({
+          fix: f,
+          score: scoreSearchQuery(q, {
+            primary: f.title,
+            codes: f.teams ? [f.teams.teamA.code, f.teams.teamB.code] : [],
+            secondary: [
+              f.canonicalKey,
+              f.tournament?.name || "",
+              f.tournament?.shortName || "",
+              f.teams?.teamA.name || "",
+              f.teams?.teamB.name || "",
+              f.sport,
+            ],
+          }),
+        }))
+        .filter((item) => item.score > 0);
+
+      scored.sort((a, b) => b.score - a.score);
+      filtered = scored.map((item) => item.fix);
     }
 
     if (options.limit && options.limit > 0) {
@@ -389,6 +516,7 @@ export class AggregatorService {
     provider?: string;
     language?: string;
     drm?: boolean;
+    hot?: boolean;
     q?: string;
     sort?: "status" | "feeds" | "title" | "time";
     page?: number;
@@ -396,6 +524,10 @@ export class AggregatorService {
   }) {
     const allCatalog = await this.getUnifiedCatalog();
     let filtered = [...allCatalog];
+
+    if (options?.hot !== undefined) {
+      filtered = filtered.filter((f) => Boolean(f.isHotMatch) === options.hot);
+    }
 
     if (options?.sport) {
       const s = options.sport.toLowerCase().trim();
@@ -1424,6 +1556,223 @@ export class AggregatorService {
     }
 
     return allChannels;
+  }
+
+  /**
+   * Returns high-priority marquee & trending matches (upstream isHot, finals, rivalries, or multi-provider consensus).
+   */
+  async getHotMatches(options?: { sport?: string; limit?: number }): Promise<NormalizedCatalogFixture[]> {
+    const catalog = await this.getUnifiedCatalog();
+    const index = this.getCatalogIndex(catalog);
+    let list = [...index.hotMatches];
+
+    // If no fixtures were explicitly marked hot, promote the highest-coverage live matches
+    if (list.length === 0) {
+      list = [...catalog].filter((f) => f.schedule.isLive);
+    }
+
+    if (options?.sport) {
+      const s = options.sport.toLowerCase().trim();
+      list = list.filter((f) => f.sport.toLowerCase() === s);
+    }
+
+    list.sort((a, b) => {
+      if (a.schedule.isLive !== b.schedule.isLive) return a.schedule.isLive ? -1 : 1;
+      const provA = Object.keys(a.providerPointers).length;
+      const provB = Object.keys(b.providerPointers).length;
+      if (provB !== provA) return provB - provA;
+      return b.streamMetadata.totalWorkingFeeds - a.streamMetadata.totalWorkingFeeds;
+    });
+
+    const limit = Math.min(100, Math.max(1, options?.limit || 25));
+    return list.slice(0, limit);
+  }
+
+  /**
+   * Returns a chronological Electronic Program Guide (EPG) & timeline schedule across all sports.
+   */
+  async getSchedule(options?: { sport?: string; date?: string }) {
+    const catalog = await this.getUnifiedCatalog({ sport: options?.sport });
+    const nowMs = Date.now();
+    const sixHoursMs = 6 * 3600 * 1000;
+
+    const liveNow: NormalizedCatalogFixture[] = [];
+    const startingSoon: NormalizedCatalogFixture[] = [];
+    const upcomingByDate: Record<string, NormalizedCatalogFixture[]> = {};
+    const recentlyEnded: NormalizedCatalogFixture[] = [];
+
+    for (const fix of catalog) {
+      const dateKey = fix.schedule.startTimeUtc
+        ? fix.schedule.startTimeUtc.slice(0, 10)
+        : fix.canonicalKey.split("::")[2]?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+
+      if (options?.date && dateKey !== options.date.trim()) {
+        continue;
+      }
+
+      if (fix.schedule.isLive || fix.schedule.status === "live") {
+        liveNow.push(fix);
+      } else if (fix.schedule.status === "upcoming") {
+        const startMs = fix.schedule.startTimeUtc ? Date.parse(fix.schedule.startTimeUtc) : NaN;
+        if (!Number.isNaN(startMs) && startMs >= nowMs && startMs - nowMs <= sixHoursMs) {
+          startingSoon.push(fix);
+        }
+        if (!upcomingByDate[dateKey]) {
+          upcomingByDate[dateKey] = [];
+        }
+        upcomingByDate[dateKey].push(fix);
+      } else {
+        recentlyEnded.push(fix);
+      }
+    }
+
+    liveNow.sort((a, b) => b.streamMetadata.totalWorkingFeeds - a.streamMetadata.totalWorkingFeeds);
+    startingSoon.sort((a, b) =>
+      (a.schedule.startTimeUtc || "").localeCompare(b.schedule.startTimeUtc || "")
+    );
+
+    return {
+      generatedAt: new Date().toISOString(),
+      summary: {
+        liveNowCount: liveNow.length,
+        startingSoonCount: startingSoon.length,
+        upcomingCount: Object.values(upcomingByDate).reduce((acc, arr) => acc + arr.length, 0),
+        recentlyEndedCount: recentlyEnded.length,
+        totalScheduled:
+          liveNow.length +
+          Object.values(upcomingByDate).reduce((acc, arr) => acc + arr.length, 0) +
+          recentlyEnded.length,
+      },
+      liveNow,
+      startingSoon,
+      upcomingByDate,
+      recentlyEnded,
+    };
+  }
+
+  /**
+   * Generates a standard XMLTV (`epg.xml`) Electronic Program Guide matching the `tvg-id`s in `/api/playlist.m3u`.
+   */
+  async generateXmltvEpg(options?: { sport?: string }): Promise<string> {
+    const catalog = await this.getUnifiedCatalog({ sport: options?.sport });
+    const escapeXml = (str: string) =>
+      str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+
+    const formatXmltvTime = (isoStr?: string | null, fallbackOffsetHours = 0): string => {
+      const d = isoStr ? new Date(isoStr) : new Date(Date.now() + fallbackOffsetHours * 3600 * 1000);
+      const validDate = Number.isNaN(d.getTime())
+        ? new Date(Date.now() + fallbackOffsetHours * 3600 * 1000)
+        : d;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return (
+        `${validDate.getUTCFullYear()}${pad(validDate.getUTCMonth() + 1)}${pad(validDate.getUTCDate())}` +
+        `${pad(validDate.getUTCHours())}${pad(validDate.getUTCMinutes())}${pad(validDate.getUTCSeconds())} +0000`
+      );
+    };
+
+    const lines: string[] = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<!DOCTYPE tv SYSTEM "xmltv.dtd">',
+      '<tv generator-info-name="Sportify EPG Engine v1.1.0" generator-info-url="https://sportify.api">',
+    ];
+
+    for (const fix of catalog) {
+      lines.push(`  <channel id="${escapeXml(fix.fixtureId)}">`);
+      lines.push(`    <display-name>${escapeXml(fix.title)}</display-name>`);
+      if (fix.posterUrl) {
+        lines.push(`    <icon src="${escapeXml(fix.posterUrl)}" />`);
+      }
+      lines.push(`  </channel>`);
+    }
+
+    for (const fix of catalog) {
+      const startXml = formatXmltvTime(fix.schedule.startTimeUtc, -1);
+      const stopXml = formatXmltvTime(fix.schedule.endTimeUtc, 3);
+      const descParts = [
+        fix.tournament?.name ? `Tournament: ${fix.tournament.name}` : "",
+        fix.matchFormat ? `Format: ${fix.matchFormat}` : "",
+        `Status: ${fix.schedule.status.toUpperCase()}`,
+        `Feeds: ${fix.streamMetadata.totalWorkingFeeds}`,
+        `Broadcasters: ${fix.streamMetadata.primaryBroadcasters.join(", ") || "Live Sports"}`,
+      ].filter(Boolean);
+
+      lines.push(
+        `  <programme start="${startXml}" stop="${stopXml}" channel="${escapeXml(fix.fixtureId)}">`
+      );
+      lines.push(`    <title lang="en">${escapeXml(fix.title)}</title>`);
+      lines.push(`    <desc lang="en">${escapeXml(descParts.join(" | "))}</desc>`);
+      lines.push(`    <category lang="en">${escapeXml(fix.sport.toUpperCase())}</category>`);
+      if (fix.tournament?.shortName) {
+        lines.push(`    <sub-title lang="en">${escapeXml(fix.tournament.shortName)}</sub-title>`);
+      }
+      lines.push(`  </programme>`);
+    }
+
+    lines.push("</tv>");
+    return lines.join("\n") + "\n";
+  }
+
+  /**
+   * Returns aggregated channel categories with channel counts, HD counts, and contributing providers.
+   */
+  async getChannelCategories() {
+    const channels = await this.getChannels();
+    const catMap = new Map<
+      string,
+      {
+        id: string;
+        category: string;
+        channelsCount: number;
+        hdCount: number;
+        providers: Set<string>;
+      }
+    >();
+
+    for (const ch of channels) {
+      const rawCat = (ch.group || ch.category || "Live TV").trim();
+      const slug = rawCat.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "live-tv";
+      let entry = catMap.get(slug);
+      if (!entry) {
+        entry = {
+          id: `cat_${slug}`,
+          category: rawCat,
+          channelsCount: 0,
+          hdCount: 0,
+          providers: new Set(),
+        };
+        catMap.set(slug, entry);
+      }
+      entry.channelsCount++;
+      if (/\b(hd|fhd|uhd|4k|1080p|720p)\b/i.test(`${ch.name} ${ch.resolution || ""}`)) {
+        entry.hdCount++;
+      }
+      for (const s of ch.sources) {
+        entry.providers.add(s.provider);
+      }
+    }
+
+    return Array.from(catMap.values())
+      .map((c) => ({
+        id: c.id,
+        category: c.category,
+        channelsCount: c.channelsCount,
+        hdCount: c.hdCount,
+        providers: Array.from(c.providers),
+      }))
+      .sort((a, b) => b.channelsCount - a.channelsCount);
+  }
+
+  /**
+   * Deeply inspects an HLS or DASH manifest URL on demand, returning real parsed renditions,
+   * audio tracks, ClearKey KIDs, and edge latency.
+   */
+  async inspectStream(url: string, headers?: Record<string, string>): Promise<ProbeResult> {
+    return streamProber.inspectManifest(url, headers);
   }
 
   /**

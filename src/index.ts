@@ -22,6 +22,7 @@ import {
   providersResourceRoute,
   searchResourceRoute,
   statsResourceRoute,
+  scheduleResourceRoute,
 } from "./routes/v1-resources.route";
 import { aggregatorService } from "./services/aggregator.service";
 
@@ -36,13 +37,43 @@ app.use("*", async (c, next) => {
   return compress()(c, next);
 });
 
-// High-precision Edge telemetry & request tracing middleware
+// High-precision Edge telemetry, ETag conditional caching & request tracing middleware
 app.use("*", async (c, next) => {
   const start = performance.now();
   const requestId = crypto.randomUUID();
   c.header("X-Request-Id", requestId);
-  c.header("X-API-Version", "1.0.0");
+  c.header("X-API-Version", "1.1.0");
+
+  // Support conditional ETag / If-None-Match on catalog & matches GET endpoints
+  if (
+    c.req.method === "GET" &&
+    (c.req.path.startsWith("/api/catalog") || c.req.path.startsWith("/api/matches"))
+  ) {
+    const etag = aggregatorService.getCatalogEtag();
+    if (etag) {
+      c.header("ETag", etag);
+      const ifNoneMatch = c.req.header("if-none-match");
+      if (ifNoneMatch && ifNoneMatch === etag) {
+        const elapsed = performance.now() - start;
+        c.header("X-Response-Time", `${elapsed.toFixed(2)}ms`);
+        c.header("Server-Timing", `edge;dur=${elapsed.toFixed(2)}`);
+        return new Response(null, { status: 304, headers: c.res.headers });
+      }
+    }
+  }
+
   await next();
+
+  const currentEtag = aggregatorService.getCatalogEtag();
+  if (
+    currentEtag &&
+    c.req.method === "GET" &&
+    (c.req.path.startsWith("/api/catalog") || c.req.path.startsWith("/api/matches"))
+  ) {
+    c.header("ETag", currentEtag);
+    c.header("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+  }
+
   const elapsed = performance.now() - start;
   c.header("X-Response-Time", `${elapsed.toFixed(2)}ms`);
   c.header("Server-Timing", `edge;dur=${elapsed.toFixed(2)}`);
@@ -69,7 +100,7 @@ app.get("/", async (c) => {
   }
   return c.json({
     service: "Sportify Live Sports Gateway",
-    version: "1.0.0",
+    version: "1.1.0",
     architecture: "Edge-Federated Multi-Provider Engine",
     status: "healthy",
     providersIntegrated: 6,
@@ -84,17 +115,22 @@ app.get("/", async (c) => {
       matches: "/api/matches",
       liveMatches: "/api/matches/live",
       upcomingMatches: "/api/matches/upcoming",
+      hotMatches: "/api/matches/hot",
       matchDetail: "/api/matches/:matchId",
+      schedule: "/api/schedule",
+      epgXmltv: "/api/epg.xml",
       tournaments: "/api/tournaments",
       tournamentDetail: "/api/tournaments/:tournamentId",
       teams: "/api/teams",
       teamDetail: "/api/teams/:teamCode",
       channels: "/api/channels",
+      channelCategories: "/api/channels/categories",
       channelDetail: "/api/channels/:channelId",
       broadcasters: "/api/broadcasters",
       providers: "/api/providers",
       providerDetail: "/api/providers/:providerId",
       unifiedStream: "/api/stream/:fixtureKey",
+      streamInspect: "/api/streams/inspect?url=<manifest_url>",
       search: "/api/search?q=<query>",
       stats: "/api/stats",
       streamProxy: "/api/proxy?url=<target_m3u8_url>",
@@ -131,7 +167,7 @@ app.get("/logos/:file", async (c) => {
 app.get("/health", (c) => {
   return c.json({
     service: "Sportify Live Sports Gateway",
-    version: "1.0.0",
+    version: "1.1.0",
     architecture: "Edge-Federated Multi-Provider Engine",
     status: "healthy",
     providersIntegrated: 6,
@@ -146,17 +182,22 @@ app.get("/health", (c) => {
       matches: "/api/matches",
       liveMatches: "/api/matches/live",
       upcomingMatches: "/api/matches/upcoming",
+      hotMatches: "/api/matches/hot",
       matchDetail: "/api/matches/:matchId",
+      schedule: "/api/schedule",
+      epgXmltv: "/api/epg.xml",
       tournaments: "/api/tournaments",
       tournamentDetail: "/api/tournaments/:tournamentId",
       teams: "/api/teams",
       teamDetail: "/api/teams/:teamCode",
       channels: "/api/channels",
+      channelCategories: "/api/channels/categories",
       channelDetail: "/api/channels/:channelId",
       broadcasters: "/api/broadcasters",
       providers: "/api/providers",
       providerDetail: "/api/providers/:providerId",
       unifiedStream: "/api/stream/:fixtureKey",
+      streamInspect: "/api/streams/inspect?url=<manifest_url>",
       search: "/api/search",
       stats: "/api/stats",
       streamProxy: "/api/proxy?url=<target_m3u8_url>",
@@ -177,11 +218,28 @@ app.route("/", docsRoute);
 // Real-Time Server-Sent Events (SSE) Live Feed
 app.route("/api/live", liveSseRoute);
 
-// Sportify v1.0.0 Resource-Oriented Endpoints
+// XMLTV EPG Endpoints (/api/epg.xml and /epg.xml)
+const handleXmltvEpg = async (c: any) => {
+  const sport = c.req.query("sport");
+  const xml = await aggregatorService.generateXmltvEpg({ sport });
+  return new Response(xml, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, max-age=60, stale-while-revalidate=120",
+    },
+  });
+};
+app.get("/api/epg.xml", handleXmltvEpg);
+app.get("/epg.xml", handleXmltvEpg);
+
+// Sportify v1.1.0 Resource-Oriented Endpoints
 app.route("/api/catalog", catalogRoute);
 app.route("/api/sports", sportsRoute);
 app.route("/api/matches", matchesResourceRoute);
 app.route("/api/events", matchesResourceRoute);
+app.route("/api/schedule", scheduleResourceRoute);
+app.route("/api/epg", scheduleResourceRoute);
 app.route("/api/tournaments", tournamentsResourceRoute);
 app.route("/api/competitions", tournamentsResourceRoute);
 app.route("/api/teams", teamsResourceRoute);

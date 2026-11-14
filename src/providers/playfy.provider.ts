@@ -329,12 +329,44 @@ export class PlayFyProvider extends AbstractBaseProvider {
                 else if (upper === "ENDED" || upper === "COMPLETED") status = "ENDED";
               }
 
+              const teamAFlag = (info.teamAFlag || ev.teamAFlag || "").trim() || undefined;
+              const teamBFlag = (info.teamBFlag || ev.teamBFlag || "").trim() || undefined;
+              const eventBanner = (info.eventBanner || ev.eventBanner || "").trim() || undefined;
+              const eventType = (info.eventType || ev.eventType || "").trim() || undefined;
+              const isHot =
+                info.isHot === "1" ||
+                info.isHot === true ||
+                ev.isHot === "1" ||
+                ev.isHot === true;
+              const priority = typeof ev.priority === "number" ? ev.priority : undefined;
+
+              let poster =
+                (info.eventLogo || ev.poster || ev.logo || ev.image || eventBanner || "").trim() ||
+                undefined;
+              if (!poster && info.teamA && info.teamB) {
+                poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
+                  `${eventType || info.eventCat || "Sports"} | ${info.eventName || "Live"}`
+                )}&teamA=${encodeURIComponent(String(info.teamA).trim())}&flagA=${encodeURIComponent(
+                  teamAFlag || ""
+                )}&teamB=${encodeURIComponent(String(info.teamB).trim())}&flagB=${encodeURIComponent(
+                  teamBFlag || ""
+                )}&time=${encodeURIComponent("LIVE")}`;
+              } else if (!poster) {
+                poster = teamAFlag;
+              }
+
               liveEvents.push({
                 id: `playfy_${ev.id || ev.slug || liveEvents.length}`,
                 title,
                 category: info.eventCat || ev.cat || ev.category || ev.sport || "Sports",
                 status,
-                poster: info.eventLogo || ev.poster || ev.logo || ev.image || info.teamAFlag,
+                poster,
+                teamAFlag,
+                teamBFlag,
+                eventBanner,
+                eventType,
+                isHot,
+                priority,
                 startTime:
                   startSec > 0
                     ? new Date(startSec * 1000).toISOString()

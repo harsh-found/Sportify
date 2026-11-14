@@ -1186,6 +1186,141 @@ function areDatesAdjacentOrSame(dateA: string, dateB: string): boolean {
   return Math.abs(msA - msB) <= 36 * 3600 * 1000;
 }
 
+const MARQUEE_RIVALRY_PAIRS = new Set([
+  "ind::pak",
+  "aus::ind",
+  "eng::ind",
+  "aus::eng",
+  "ind::nz",
+  "ind::rsa",
+  "bar::rma",
+  "liv::mci",
+  "ars::mci",
+  "csk::mi",
+  "csk::rcb",
+  "mi::rcb",
+]);
+
+function detectIsHotFixture(
+  ev: LiveEvent,
+  parsed: ParsedEventEntities,
+  providerCount: number
+): boolean {
+  if (ev.isHot === true) return true;
+  if (typeof ev.priority === "number" && ev.priority > 0 && ev.priority <= 3) return true;
+  if (parsed.matchStage === "final" || parsed.matchStage === "semi-final") return true;
+  if (providerCount >= 3) return true;
+  if (parsed.kind === "match" && parsed.teams) {
+    const pairKey = [
+      parsed.teams.teamA.code.toLowerCase(),
+      parsed.teams.teamB.code.toLowerCase(),
+    ]
+      .sort()
+      .join("::");
+    if (MARQUEE_RIVALRY_PAIRS.has(pairKey)) return true;
+  }
+  return false;
+}
+
+/**
+ * Computes a weighted relevance score (0-100) for a search query against an entity's text fields.
+ * Supports:
+ *  - Exact code/title match (100)
+ *  - Prefix match (85)
+ *  - Multi-token AND match across fields (75)
+ *  - Substring match (60)
+ *  - Bounded 1-edit-distance typo tolerance on tokens >= 4 chars (45)
+ */
+export function scoreSearchQuery(
+  rawQuery: string,
+  target:
+    | {
+        primary: string;
+        codes?: string[];
+        secondary?: string[];
+      }
+    | string[]
+): number {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return 0;
+
+  const normalizedTarget = Array.isArray(target)
+    ? {
+        primary: target[0] || "",
+        codes: target.filter((s) => s && s.length <= 6),
+        secondary: target.slice(1),
+      }
+    : target;
+
+  const primaryLower = (normalizedTarget.primary || "").toLowerCase();
+  const codesLower = (normalizedTarget.codes || []).map((c) => c.toLowerCase());
+  const secondaryLower = (normalizedTarget.secondary || []).filter(Boolean).map((s) => s.toLowerCase());
+
+  if (primaryLower === q || codesLower.includes(q)) return 100;
+  if (primaryLower.startsWith(q) || codesLower.some((c) => c.startsWith(q))) return 88;
+  if (primaryLower.includes(q)) return 76;
+  if (secondaryLower.some((s) => s === q)) return 72;
+  if (secondaryLower.some((s) => s.includes(q))) return 62;
+
+  const queryTokens = q.split(/[\s,/-]+/).filter((t) => t.length > 0);
+  const fullCorpus = `${primaryLower} ${codesLower.join(" ")} ${secondaryLower.join(" ")}`;
+  const corpusWords = fullCorpus.split(/[^a-z0-9]+/).filter((w) => w.length > 0);
+
+  if (queryTokens.length > 1) {
+    const allTokensPresent = queryTokens.every((qt) => fullCorpus.includes(qt));
+    if (allTokensPresent) return 78;
+  }
+
+  // Typo tolerance: 1-character Levenshtein distance for tokens >= 4 chars
+  let matchedTokens = 0;
+  for (const qt of queryTokens) {
+    if (fullCorpus.includes(qt)) {
+      matchedTokens++;
+      continue;
+    }
+    if (qt.length >= 4) {
+      const fuzzyHit = corpusWords.some((cw) => {
+        if (Math.abs(cw.length - qt.length) > 1 || cw.length < 4) return false;
+        return isWithinOneEdit(qt, cw);
+      });
+      if (fuzzyHit) matchedTokens++;
+    }
+  }
+
+  if (matchedTokens === queryTokens.length && queryTokens.length > 0) {
+    return 48;
+  }
+  return 0;
+}
+
+function isWithinOneEdit(a: string, b: string): boolean {
+  if (a === b) return true;
+  const lenA = a.length;
+  const lenB = b.length;
+  if (Math.abs(lenA - lenB) > 1) return false;
+
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < lenA && j < lenB) {
+    if (a[i] === b[j]) {
+      i++;
+      j++;
+    } else {
+      edits++;
+      if (edits > 1) return false;
+      if (lenA > lenB) i++;
+      else if (lenB > lenA) j++;
+      else {
+        i++;
+        j++;
+      }
+    }
+  }
+  if (i < lenA || j < lenB) edits++;
+  return edits <= 1;
+}
+
 /**
  * Converts a list of raw `LiveEvent` records into a deduplicated, normalized `NormalizedCatalogFixture[]` catalog.
  */
@@ -1195,6 +1330,7 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
     hasExplicitStartTime: boolean;
     matchNumberTag: string | null;
     rawUrls: Set<string>;
+    maxFormatHintCount: number;
   }
 
   const fixtureMap = new Map<string, InternalFixtureBucket>();
@@ -1204,6 +1340,17 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
   for (const ev of events) {
     const sport = detectSport(ev.category, ev.title);
     const parsed = parseEventEntities(ev.title, ev.competition);
+
+    // Attach upstream team flags (teamAFlag / teamBFlag) onto parsed teams
+    if (parsed.kind === "match" && parsed.teams) {
+      if (ev.teamAFlag && !parsed.teams.teamA.logo) {
+        parsed.teams.teamA = { ...parsed.teams.teamA, logo: ev.teamAFlag };
+      }
+      if (ev.teamBFlag && !parsed.teams.teamB.logo) {
+        parsed.teams.teamB = { ...parsed.teams.teamB, logo: ev.teamBFlag };
+      }
+    }
+
     let canonicalKey = generateCanonicalKey(sport, parsed, ev.startTime);
 
     let bucket = fixtureMap.get(canonicalKey);
@@ -1256,6 +1403,8 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
     const mappedStatus: "live" | "upcoming" | "ended" =
       ev.status === "LIVE" ? "live" : ev.status === "ENDED" ? "ended" : "upcoming";
 
+    const hintCount = Array.isArray(ev.formatHints) ? ev.formatHints.length : 0;
+
     if (!bucket) {
       const fixtureId = `fix_${createHash("md5").update(canonicalKey).digest("hex").slice(0, 12)}`;
       const pointerMap: Record<string, string> = {};
@@ -1269,11 +1418,15 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
         if (dedupUrl) rawUrls.add(dedupUrl);
       }
 
+      const isHotMatch = detectIsHotFixture(ev, parsed, Object.keys(pointerMap).length);
+
       const newFixture: NormalizedCatalogFixture = {
         fixtureId,
         canonicalKey,
         kind: parsed.kind,
         sport,
+        phase: mappedStatus,
+        isHotMatch,
         title: parsed.cleanTitle,
         matchFormat: parsed.matchFormat || null,
         matchStage: parsed.matchStage || null,
@@ -1295,9 +1448,9 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
           startTimeUtc: safeIsoDate(ev.startTime),
           endTimeUtc: safeIsoDate(ev.endTime),
         },
-        posterUrl: ev.poster || null,
+        posterUrl: ev.poster || ev.eventBanner || null,
         streamMetadata: {
-          totalWorkingFeeds: rawUrls.size,
+          totalWorkingFeeds: Math.max(rawUrls.size, hintCount),
           availableLanguages: languagesInEvent.length > 0 ? languagesInEvent : ["eng"],
           availableQualities: ["1080p", "720p", "480p", "360p"],
           maxResolution: "1080p FHD",
@@ -1312,6 +1465,7 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
         hasExplicitStartTime: Boolean(ev.startTime && ev.startTime.trim()),
         matchNumberTag: parsed.matchNumberTag || null,
         rawUrls,
+        maxFormatHintCount: hintCount,
       };
       fixtureMap.set(canonicalKey, bucket);
 
@@ -1340,7 +1494,41 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
         const dedupUrl = normalizeStreamUrlForDedup(s.streamUrl);
         if (dedupUrl) bucket.rawUrls.add(dedupUrl);
       }
-      existing.streamMetadata.totalWorkingFeeds = bucket.rawUrls.size;
+      if (hintCount > bucket.maxFormatHintCount) {
+        bucket.maxFormatHintCount = hintCount;
+      }
+      existing.streamMetadata.totalWorkingFeeds = Math.max(
+        bucket.rawUrls.size,
+        bucket.maxFormatHintCount
+      );
+
+      // Merge team logos if missing on existing fixture
+      if (existing.teams && parsed.teams) {
+        const incomingA = parsed.teams.teamA;
+        const incomingB = parsed.teams.teamB;
+        if (!existing.teams.teamA.logo) {
+          if (incomingA.code === existing.teams.teamA.code && incomingA.logo) {
+            existing.teams.teamA.logo = incomingA.logo;
+          } else if (incomingB.code === existing.teams.teamA.code && incomingB.logo) {
+            existing.teams.teamA.logo = incomingB.logo;
+          }
+        }
+        if (!existing.teams.teamB.logo) {
+          if (incomingB.code === existing.teams.teamB.code && incomingB.logo) {
+            existing.teams.teamB.logo = incomingB.logo;
+          } else if (incomingA.code === existing.teams.teamB.code && incomingA.logo) {
+            existing.teams.teamB.logo = incomingA.logo;
+          }
+        }
+      }
+
+      // Upgrade isHotMatch if newly confirmed hot or multi-provider threshold reached
+      if (
+        !existing.isHotMatch &&
+        detectIsHotFixture(ev, parsed, Object.keys(existing.providerPointers).length)
+      ) {
+        existing.isHotMatch = true;
+      }
 
       // Merge languages & broadcasters
       existing.streamMetadata.availableLanguages = Array.from(
@@ -1371,8 +1559,10 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
       if (ev.status === "LIVE") {
         existing.schedule.isLive = true;
         existing.schedule.status = "live";
+        existing.phase = "live";
       } else if (ev.status === "UPCOMING" && existing.schedule.status === "ended") {
         existing.schedule.status = "upcoming";
+        existing.phase = "upcoming";
       }
       if (!existing.schedule.startTimeUtc && ev.startTime) {
         existing.schedule.startTimeUtc = safeIsoDate(ev.startTime);
@@ -1380,8 +1570,8 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
       if (!existing.schedule.endTimeUtc && ev.endTime) {
         existing.schedule.endTimeUtc = safeIsoDate(ev.endTime);
       }
-      if (!existing.posterUrl && ev.poster) {
-        existing.posterUrl = ev.poster;
+      if (!existing.posterUrl && (ev.poster || ev.eventBanner)) {
+        existing.posterUrl = ev.poster || ev.eventBanner || null;
       }
       if (!bucket.matchNumberTag && parsed.matchNumberTag) {
         bucket.matchNumberTag = parsed.matchNumberTag;

@@ -44,6 +44,13 @@ export type StreamSource = Omit<z.infer<typeof StreamSourceSchema>, "status"> & 
   status?: "ONLINE" | "DEGRADED" | "OFFLINE";
 };
 
+export const FormatHintSchema = z.object({
+  title: z.string(),
+  logo: z.string().optional(),
+});
+
+export type FormatHint = z.infer<typeof FormatHintSchema>;
+
 export const LiveEventSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -53,6 +60,13 @@ export const LiveEventSchema = z.object({
   status: z.enum(["LIVE", "UPCOMING", "ENDED"]).default("LIVE"),
   poster: z.string().optional(),
   thumbnail: z.string().optional(),
+  teamAFlag: z.string().optional(),
+  teamBFlag: z.string().optional(),
+  eventBanner: z.string().optional(),
+  eventType: z.string().optional(),
+  isHot: z.boolean().optional(),
+  priority: z.number().optional(),
+  formatHints: z.array(FormatHintSchema).optional(),
   venue: z.string().optional(),
   competition: z.string().optional(),
   lastUpdated: z.string().optional(),
