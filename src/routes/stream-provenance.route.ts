@@ -10,7 +10,7 @@ streamProvenanceRoute.get("/inspect", async (c) => {
     return c.json(
       {
         success: false,
-        version: "1.1.0",
+        version: "1.3.0",
         error: {
           code: "MISSING_STREAM_URL",
           message: "Query parameter 'url' is required (e.g., /api/streams/inspect?url=https://example.com/master.m3u8)",
@@ -32,7 +32,7 @@ streamProvenanceRoute.get("/inspect", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.1.0",
+    version: "1.3.0",
     inspection,
     timestamp: new Date().toISOString(),
   });
@@ -62,7 +62,7 @@ streamProvenanceRoute.get("/:fixtureKey", async (c) => {
     return c.json(
       {
         success: false,
-        version: "1.1.0",
+        version: "1.3.0",
         error: `No live feeds found for fixture '${fixtureKey}'`,
       },
       404
@@ -71,7 +71,7 @@ streamProvenanceRoute.get("/:fixtureKey", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.1.0",
+    version: "1.3.0",
     fixtureKey,
     fixtureTitle: fixture?.title || fixtureKey,
     kind: fixture?.kind || "match",

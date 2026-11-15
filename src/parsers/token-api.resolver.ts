@@ -62,6 +62,17 @@ export class TokenApiResolver {
     }
   }
 
+  private static async safeFetch(
+    fetchFn: typeof fetch,
+    url: string,
+    init: RequestInit = {}
+  ): Promise<Response> {
+    if (fetchFn === fetch && !init.signal) {
+      return fetchFn(url, { ...init, signal: AbortSignal.timeout(3500) });
+    }
+    return fetchFn(url, init);
+  }
+
   private static async handleEmbedExtraction(
     config: TokenApiConfig,
     fetchFn: typeof fetch
@@ -76,7 +87,7 @@ export class TokenApiResolver {
 
     // Attempt to fetch embed page and extract stream URL from HTML
     try {
-      const res = await fetchFn(embedUrl, {
+      const res = await this.safeFetch(fetchFn, embedUrl, {
         headers: { "User-Agent": this.DEFAULT_UA },
       });
       if (!res.ok) return null;
@@ -94,7 +105,7 @@ export class TokenApiResolver {
     const apiUrl = (config.api || "").trim() || (config.url || "").trim();
     if (!apiUrl) return null;
 
-    const res = await fetchFn(apiUrl, {
+    const res = await this.safeFetch(fetchFn, apiUrl, {
       headers: {
         "User-Agent": this.DEFAULT_UA,
         Accept: "application/json",
@@ -149,7 +160,7 @@ export class TokenApiResolver {
     const apiUrl = (config.api || "").trim() || (config.url || "").trim();
     if (!apiUrl) return null;
 
-    const res = await fetchFn(apiUrl, {
+    const res = await this.safeFetch(fetchFn, apiUrl, {
       headers: { "User-Agent": this.DEFAULT_UA },
     });
     if (!res.ok) return null;
@@ -194,7 +205,7 @@ export class TokenApiResolver {
       ipApiUrl = "https://ip-api.streamingucms.com/";
     }
 
-    const res = await fetchFn(ipApiUrl, {
+    const res = await this.safeFetch(fetchFn, ipApiUrl, {
       headers: { "User-Agent": this.DEFAULT_UA },
     });
     if (!res.ok) return null;
@@ -230,7 +241,7 @@ export class TokenApiResolver {
     }
 
     try {
-      const res = await fetchFn(target, {
+      const res = await this.safeFetch(fetchFn, target, {
         headers: { "User-Agent": this.DEFAULT_UA },
       });
       if (!res.ok) return null;

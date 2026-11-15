@@ -98,6 +98,10 @@ export function filterDashMpdByQuality(
   );
 }
 
+export function isCustomProviderScheme(url: string): boolean {
+  return /^(?:playztv|livxow|sktech|sportzx|playfy|cricify):\/\//i.test(url);
+}
+
 /**
  * Filters an HLS Master Playlist (`.m3u8`) by target resolution height (e.g. `1080p`, `720p`, `480p`, `360p`),
  * stripping other `#EXT-X-STREAM-INF` variants so the player is locked to the requested quality.
@@ -110,7 +114,8 @@ export function filterM3u8ByQuality(
   customReferer?: string,
   customUa?: string,
   customOrigin?: string,
-  customCookie?: string
+  customCookie?: string,
+  customAuth?: string
 ): string[] | null {
   if (!quality || quality.toLowerCase() === "auto") return null;
 
@@ -169,6 +174,7 @@ export function filterM3u8ByQuality(
     if (customUa) p += `&ua=${encodeURIComponent(customUa)}`;
     if (customOrigin) p += `&origin=${encodeURIComponent(customOrigin)}`;
     if (customCookie) p += `&cookie=${encodeURIComponent(customCookie)}`;
+    if (customAuth) p += `&auth=${encodeURIComponent(customAuth)}`;
     return p;
   };
 
@@ -204,7 +210,8 @@ export function filterM3u8ByQuality(
 /**
  * GET / HEAD /api/proxy
  * High-Performance Edge Stream Proxy with Multi-Mirror Automatic Failover,
- * Custom URI Resolution, Dynamic Quality Filtering (DASH & HLS), and Segment Micro-Caching.
+ * Custom URI Resolution (all 6 providers), Dynamic Quality Filtering (DASH & HLS),
+ * and Segment Micro-Caching.
  */
 proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
   const isHead = c.req.method === "HEAD";
@@ -216,6 +223,7 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
   let customUa = c.req.query("ua");
   let customOrigin = c.req.query("origin");
   let customCookie = c.req.query("cookie");
+  let customAuth = c.req.query("auth");
 
   // 1. Resolve by channel/event ID if `channel` query param is provided without `url`
   if (!targetUrl && channelId) {
@@ -229,6 +237,8 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
       customUa = customUa || resolved.headers["User-Agent"] || resolved.headers["user-agent"];
       customOrigin = customOrigin || resolved.headers["Origin"] || resolved.headers["origin"];
       customCookie = customCookie || resolved.headers["Cookie"] || resolved.headers["cookie"];
+      customAuth =
+        customAuth || resolved.headers["Authorization"] || resolved.headers["authorization"];
     }
   }
 
@@ -236,12 +246,8 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
     return c.text("Invalid or missing 'url' or 'channel' query parameter", 400);
   }
 
-  // 2. Resolve custom provider schemes (playztv://, livxow://, sktech://) on-the-fly
-  if (
-    targetUrl.startsWith("playztv://") ||
-    targetUrl.startsWith("livxow://") ||
-    targetUrl.startsWith("sktech://")
-  ) {
+  // 2. Resolve custom provider schemes (playztv://, livxow://, sktech://, sportzx://, playfy://, cricify://) on-the-fly
+  if (isCustomProviderScheme(targetUrl)) {
     const resolvedSource = await aggregatorService.resolveCustomUri(targetUrl);
     if (!resolvedSource) {
       return c.text(`Unable to resolve custom provider URI: ${targetUrl}`, 502);
@@ -256,6 +262,10 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
         customOrigin || resolvedSource.headers["Origin"] || resolvedSource.headers["origin"];
       customCookie =
         customCookie || resolvedSource.headers["Cookie"] || resolvedSource.headers["cookie"];
+      customAuth =
+        customAuth ||
+        resolvedSource.headers["Authorization"] ||
+        resolvedSource.headers["authorization"];
     }
   }
 
@@ -266,6 +276,7 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
   customUa = customUa || parsedTarget.headers["User-Agent"];
   customOrigin = customOrigin || parsedTarget.headers["Origin"];
   customCookie = customCookie || parsedTarget.headers["Cookie"];
+  customAuth = customAuth || parsedTarget.headers["Authorization"];
 
   if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
     return c.text("Invalid or missing 'url' query parameter", 400);
@@ -310,6 +321,7 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
       };
       if (customOrigin) reqHeaders["Origin"] = customOrigin;
       if (customCookie) reqHeaders["Cookie"] = customCookie;
+      if (customAuth) reqHeaders["Authorization"] = customAuth;
 
       const rangeHeader = c.req.header("range");
       if (rangeHeader) {
@@ -384,6 +396,7 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
       if (customUa) p += `&ua=${encodeURIComponent(customUa)}`;
       if (customOrigin) p += `&origin=${encodeURIComponent(customOrigin)}`;
       if (customCookie) p += `&cookie=${encodeURIComponent(customCookie)}`;
+      if (customAuth) p += `&auth=${encodeURIComponent(customAuth)}`;
       return p;
     };
 
@@ -395,7 +408,8 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
       customReferer,
       customUa,
       customOrigin,
-      customCookie
+      customCookie,
+      customAuth
     );
 
     if (qualityFilteredLines) {

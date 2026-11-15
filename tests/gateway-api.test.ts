@@ -2,28 +2,28 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import app from "../src/index";
 import { aggregatorService } from "../src/services/aggregator.service";
 
-describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
+describe("Sportify Live Sports Gateway API (v1.3.0)", () => {
   beforeAll(async () => {
     // Stop continuous background intervals to prevent hanging tests
     aggregatorService.stopBackgroundRefresh();
-    // Warm up events cache with 15s allowance
-    await aggregatorService.getEvents();
+    // Warm up events and channels caches concurrently with 20s allowance
+    await Promise.all([aggregatorService.getEvents(), aggregatorService.getChannels()]);
   }, 20000);
 
   afterAll(() => {
     aggregatorService.stopBackgroundRefresh();
   });
 
-  test("GET /health returns Sportify Live Sports Gateway v1.1.0 metadata", async () => {
+  test("GET /health returns Sportify Live Sports Gateway v1.3.0 metadata", async () => {
     const res = await app.request("/health");
     expect(res.status).toBe(200);
     expect(res.headers.get("X-Response-Time")).toBeDefined();
     expect(res.headers.get("X-Request-Id")).toBeDefined();
-    expect(res.headers.get("X-API-Version")).toBe("1.1.0");
+    expect(res.headers.get("X-API-Version")).toBe("1.3.0");
 
     const data = (await res.json()) as any;
     expect(data.service).toBe("Sportify Live Sports Gateway");
-    expect(data.version).toBe("1.1.0");
+    expect(data.version).toBe("1.3.0");
     expect(data.architecture).toBe("Edge-Federated Multi-Provider Engine");
     expect(data.status).toBe("healthy");
     expect(data.providersIntegrated).toBe(6);
@@ -60,7 +60,7 @@ describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
 
     const data = (await res.json()) as any;
     expect(data.success).toBe(true);
-    expect(data.version).toBe("1.1.0");
+    expect(data.version).toBe("1.3.0");
     expect(Array.isArray(data.sports)).toBe(true);
 
     const detailRes = await app.request("/api/sports/cricket");
@@ -78,7 +78,7 @@ describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.success).toBe(true);
-    expect(data.version).toBe("1.1.0");
+    expect(data.version).toBe("1.3.0");
     expect(typeof data.total).toBe("number");
     expect(Array.isArray(data.matches)).toBe(true);
     expect(data.matches.length).toBeLessThanOrEqual(5);
@@ -99,7 +99,7 @@ describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
     expect(hotRes.status).toBe(200);
     const hotData = (await hotRes.json()) as any;
     expect(hotData.success).toBe(true);
-    expect(hotData.version).toBe("1.1.0");
+    expect(hotData.version).toBe("1.3.0");
     expect(Array.isArray(hotData.matches)).toBe(true);
   });
 
@@ -108,7 +108,7 @@ describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
     expect(schedRes.status).toBe(200);
     const schedData = (await schedRes.json()) as any;
     expect(schedData.success).toBe(true);
-    expect(schedData.version).toBe("1.1.0");
+    expect(schedData.version).toBe("1.3.0");
     expect(schedData.summary).toBeDefined();
     expect(Array.isArray(schedData.liveNow)).toBe(true);
     expect(Array.isArray(schedData.startingSoon)).toBe(true);
@@ -119,7 +119,7 @@ describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
     expect(epgRes.headers.get("content-type")).toContain("application/xml");
     const xmlText = await epgRes.text();
     expect(xmlText).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xmlText).toContain('<tv generator-info-name="Sportify EPG Engine v1.1.0"');
+    expect(xmlText).toContain('<tv generator-info-name="Sportify EPG Engine v1.3.0"');
   });
 
   test("GET /api/tournaments and GET /api/tournaments/:id return canonical and active competitions", async () => {
@@ -352,12 +352,12 @@ describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
     expect(m3uText).toStartWith("#EXTM3U");
   }, 30000);
 
-  test("GET /api/openapi.json returns valid OpenAPI 3.1.0 v1.1.0 specification", async () => {
+  test("GET /api/openapi.json returns valid OpenAPI 3.1.0 v1.3.0 specification", async () => {
     const res = await app.request("/api/openapi.json");
     expect(res.status).toBe(200);
     const schema = (await res.json()) as any;
     expect(schema.openapi).toBe("3.1.0");
-    expect(schema.info.version).toBe("1.1.0");
+    expect(schema.info.version).toBe("1.3.0");
     expect(schema.info.title).toContain("Sportify");
     expect(schema.paths["/api/catalog"]).toBeDefined();
     expect(schema.paths["/api/matches"]).toBeDefined();
@@ -378,12 +378,12 @@ describe("Sportify Live Sports Gateway API (v1.1.0)", () => {
     expect(schema.paths["/api/playlist.m3u"]).toBeDefined();
   });
 
-  test("GET /docs renders redesigned v1.1.0 developer documentation portal", async () => {
+  test("GET /docs renders redesigned v1.3.0 developer documentation portal", async () => {
     const res = await app.request("/docs");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Sportify API");
-    expect(html).toContain("v1.1.0");
+    expect(html).toContain("v1.3.0");
     expect(html).toContain("SwaggerUIBundle");
     expect(html).toContain("/api/openapi.json");
   });

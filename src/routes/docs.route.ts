@@ -7,9 +7,9 @@ const openApiSpec = {
   openapi: "3.1.0",
   info: {
     title: "Sportify Live Sports & Stream Aggregation API",
-    version: "1.1.0",
+    version: "1.3.0",
     description:
-      "Production-grade sports data and live stream aggregation API platform federating 6 CS3 providers (Cricify, Sportzx, PlayZTV, PlayFy, SKTech, LivXow) with O(1) indexed catalog lookups, order-independent event reconciliation, franchise-to-tournament inference, real HLS/DASH manifest rendition inspection, ClearKey DRM resolution, XMLTV EPG generation, and HLS/DASH edge proxying.",
+      "Production-grade sports data and live stream aggregation API platform federating 6 CS3 providers (Cricify, Sportzx, PlayZTV, PlayFy, SKTech, LivXow) with O(1) indexed catalog lookups, Unicode diacritic entity normalization, franchise-to-tournament inference, 24KB deep HLS/DASH manifest rendition & encryption inspection, PlaybackCompatibility client profiles, ClearKey DRM resolution, XMLTV EPG generation, and 6-scheme HLS/DASH edge proxying.",
     contact: {
       name: "Sportify Platform Engineering",
     },

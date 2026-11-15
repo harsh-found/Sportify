@@ -204,12 +204,27 @@ export class CricifyProvider extends AbstractBaseProvider {
     }
   }
 
+  private sanitizeOptionalField(val: unknown): string | undefined {
+    if (typeof val !== "string") return undefined;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === "null" || trimmed === "nulln" || trimmed === "o" || trimmed === "undefined") {
+      return undefined;
+    }
+    return trimmed;
+  }
+
+  private sanitizeOptionalUrl(val: unknown): string | undefined {
+    const clean = this.sanitizeOptionalField(val);
+    if (!clean || !/^https?:\/\//i.test(clean)) return undefined;
+    return clean;
+  }
+
   async fetchEvents(): Promise<LiveEvent[]> {
     const primaryUrl = await this.getBaseUrl();
     const urlsToTry = [primaryUrl, ...this.fallbackBaseUrls.filter((u) => u !== primaryUrl)];
 
     for (const base of urlsToTry) {
-      const endpoints = [`${base}/cats.txt`, `${base}/categories/live-events.txt`];
+      const endpoints = [`${base}/categories/live-events.txt`, `${base}/cats.txt`];
       for (const endpoint of endpoints) {
         try {
           const response = await this.safeFetch(endpoint, {
@@ -228,7 +243,23 @@ export class CricifyProvider extends AbstractBaseProvider {
             const parsed = JSON.parse(decryptedText);
             const eventsList = Array.isArray(parsed)
               ? parsed
-              : parsed.data || parsed.events || parsed.categories || [];
+              : parsed.data || parsed.events || parsed.categories || parsed.channels || [];
+
+            if (!Array.isArray(eventsList) || eventsList.length === 0) continue;
+
+            // Skip /cats.txt if it only contains category/country folders without eventInfo or inline streams
+            const hasRealEvents = eventsList.some(
+              (it: any) =>
+                Boolean(it?.eventInfo) ||
+                Boolean(it?.slug) ||
+                Array.isArray(it?.formats) ||
+                Array.isArray(it?.streams) ||
+                Array.isArray(it?.links)
+            );
+            if (!hasRealEvents) continue;
+
+            this.cachedBaseUrl = base;
+            this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
 
             const liveEvents: LiveEvent[] = [];
             const pendingSlugLookups: Array<{
@@ -239,12 +270,26 @@ export class CricifyProvider extends AbstractBaseProvider {
             for (const item of eventsList) {
               const info = item.eventInfo || item;
               const slug = item.slug || item.id || item.cat_id;
+              const teamA = String(info.teamA || "").trim();
+              const teamB = String(info.teamB || "").trim();
+              const eventName = this.sanitizeOptionalField(info.eventName);
 
-              let title = item.title || info.eventName || item.name || "Live Match";
-              if (info.teamA && info.teamB) {
-                const vsTitle = `${info.teamA} vs ${info.teamB}`;
-                if (!title.toLowerCase().includes(" vs ")) {
-                  title = info.eventName ? `${vsTitle} (${info.eventName})` : vsTitle;
+              let title =
+                this.sanitizeOptionalField(item.title) ||
+                eventName ||
+                this.sanitizeOptionalField(item.name) ||
+                "Live Match";
+
+              if (teamA && teamB) {
+                if (teamA.toLowerCase() === teamB.toLowerCase()) {
+                  title = eventName && !/^(motorsports?|boxing|cricket|football|sports?)$/i.test(eventName)
+                    ? eventName
+                    : teamA;
+                } else if (!title.toLowerCase().includes(" vs ")) {
+                  title =
+                    eventName && !/^(motorsports?|boxing|cricket|football|sports?)$/i.test(eventName)
+                      ? `${teamA} vs ${teamB} (${eventName})`
+                      : `${teamA} vs ${teamB}`;
                 }
               }
 
@@ -267,6 +312,7 @@ export class CricifyProvider extends AbstractBaseProvider {
               const formats = item.formats || item.links || item.streams || item.streamUrls || [];
               if (Array.isArray(formats)) {
                 for (const f of formats) {
+                  if (!f || typeof f !== "object") continue;
                   const rawLink = f.webLink || f.url || f.link || "";
                   if (!rawLink) continue;
                   const src = await this.buildStreamSourceFromEntry({
@@ -287,10 +333,10 @@ export class CricifyProvider extends AbstractBaseProvider {
                 }
               }
 
-              const teamAFlag = (info.teamAFlag || "").trim() || undefined;
-              const teamBFlag = (info.teamBFlag || "").trim() || undefined;
-              const eventBanner = (info.eventBanner || "").trim() || undefined;
-              const eventType = (info.eventType || "").trim() || undefined;
+              const teamAFlag = this.sanitizeOptionalUrl(info.teamAFlag);
+              const teamBFlag = this.sanitizeOptionalUrl(info.teamBFlag);
+              const eventBanner = this.sanitizeOptionalUrl(info.eventBanner);
+              const eventType = this.sanitizeOptionalField(info.eventType);
               const isHot =
                 info.isHot === "1" ||
                 info.isHot === true ||
@@ -299,15 +345,18 @@ export class CricifyProvider extends AbstractBaseProvider {
               const priority = typeof item.priority === "number" ? item.priority : undefined;
 
               let poster =
-                (info.eventLogo || item.image || item.logo || eventBanner || "").trim() ||
-                undefined;
-              if (!poster && info.teamA && info.teamB) {
+                this.sanitizeOptionalUrl(info.eventLogo) ||
+                this.sanitizeOptionalUrl(item.image) ||
+                this.sanitizeOptionalUrl(item.logo) ||
+                eventBanner;
+
+              if (!poster && teamA && teamB) {
                 // Matches LiveEventsProvider.kt generateMatchCardUrl()
                 poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
-                  `${eventType || info.eventCat || "Cricket"} | ${info.eventName || "Live"}`
-                )}&teamA=${encodeURIComponent(String(info.teamA).trim())}&flagA=${encodeURIComponent(
+                  `${eventType || info.eventCat || "Cricket"} | ${eventName || "Live"}`
+                )}&teamA=${encodeURIComponent(teamA)}&flagA=${encodeURIComponent(
                   teamAFlag || ""
-                )}&teamB=${encodeURIComponent(String(info.teamB).trim())}&flagB=${encodeURIComponent(
+                )}&teamB=${encodeURIComponent(teamB)}&flagB=${encodeURIComponent(
                   teamBFlag || ""
                 )}&time=${encodeURIComponent(String(info.startTime || "LIVE"))}`;
               } else if (!poster) {
@@ -320,7 +369,7 @@ export class CricifyProvider extends AbstractBaseProvider {
                   if (fn && typeof fn === "object" && fn.title) {
                     formatHints.push({
                       title: String(fn.title).trim(),
-                      logo: fn.logo ? String(fn.logo).trim() : undefined,
+                      logo: this.sanitizeOptionalUrl(fn.logo),
                     });
                   }
                 }
@@ -332,10 +381,26 @@ export class CricifyProvider extends AbstractBaseProvider {
                 }
               }
 
+              const slugStr = slug ? String(slug).trim() : `${liveEvents.length}`;
+              const deferredSource: StreamSource = {
+                id: `cricify_${slugStr}_deferred`,
+                provider: this.metadata.id,
+                quality: "1080p",
+                title: formatHints[0]?.title || title,
+                format: "HLS",
+                streamUrl: `cricify://${slugStr}`,
+                status: "ONLINE",
+              };
+
               const eventObj: LiveEvent = {
-                id: `cricify_${slug || liveEvents.length}`,
+                id: `cricify_${slugStr}`,
                 title,
-                category: info.eventCat || info.eventCategory || item.cat || item.category || "Cricket",
+                category:
+                  info.eventCat ||
+                  info.eventCategory ||
+                  item.cat ||
+                  item.category ||
+                  "Cricket",
                 status,
                 poster,
                 teamAFlag,
@@ -347,15 +412,15 @@ export class CricifyProvider extends AbstractBaseProvider {
                 formatHints: formatHints.length > 0 ? formatHints : undefined,
                 startTime: startMs ? new Date(startMs).toISOString() : info.startTime,
                 endTime: endMs ? new Date(endMs).toISOString() : info.endTime,
-                competition: info.eventName || undefined,
+                competition: eventName || undefined,
                 lastUpdated: new Date().toISOString(),
-                sources,
+                sources: sources.length > 0 ? sources : [deferredSource],
               };
 
-              if (sources.length > 0) {
-                liveEvents.push(eventObj);
-              } else if (slug && typeof slug === "string" && pendingSlugLookups.length < 16) {
-                pendingSlugLookups.push({ eventObj, slug });
+              liveEvents.push(eventObj);
+
+              if (sources.length === 0 && slugStr && pendingSlugLookups.length < 16) {
+                pendingSlugLookups.push({ eventObj, slug: slugStr });
               }
             }
 
@@ -365,7 +430,6 @@ export class CricifyProvider extends AbstractBaseProvider {
                   const resolved = await this.fetchSlugStreams(base, slug, eventObj.title);
                   if (resolved.length > 0) {
                     eventObj.sources = resolved;
-                    liveEvents.push(eventObj);
                   }
                 })
               );
@@ -453,15 +517,26 @@ export class CricifyProvider extends AbstractBaseProvider {
     return [];
   }
 
-  async resolveStream(id: string): Promise<StreamSource | null> {
-    if (id.startsWith("cricify_")) {
-      const slug = id.replace(/^cricify_/, "");
+  async resolveAllStreams(id: string): Promise<StreamSource[]> {
+    let slug = "";
+    if (id.startsWith("cricify://")) {
+      slug = id.replace(/^cricify:\/\//, "").trim();
+    } else if (id.startsWith("cricify_")) {
+      slug = id.replace(/^cricify_/, "").replace(/_deferred$/, "").trim();
+    }
+    if (slug) {
       const baseUrl = await this.getBaseUrl();
       const slugSources = await this.fetchSlugStreams(baseUrl, slug, slug);
       if (slugSources.length > 0) {
-        return slugSources[0];
+        return slugSources;
       }
     }
+    return [];
+  }
+
+  async resolveStream(id: string): Promise<StreamSource | null> {
+    const all = await this.resolveAllStreams(id);
+    if (all.length > 0) return all[0];
 
     const events = await this.fetchEvents();
     const foundEvent = events.find((e) => e.id === id);

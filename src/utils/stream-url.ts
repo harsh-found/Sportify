@@ -189,11 +189,13 @@ export function buildProxyHeaderQuery(headers?: Record<string, string>): string 
   const ua = headers["User-Agent"] || headers["user-agent"];
   const origin = headers["Origin"] || headers["origin"];
   const cookie = headers["Cookie"] || headers["cookie"];
+  const auth = headers["Authorization"] || headers["authorization"];
 
   if (referer) query += `&referer=${encodeURIComponent(referer)}`;
   if (ua) query += `&ua=${encodeURIComponent(ua)}`;
   if (origin) query += `&origin=${encodeURIComponent(origin)}`;
   if (cookie) query += `&cookie=${encodeURIComponent(cookie)}`;
+  if (auth) query += `&auth=${encodeURIComponent(auth)}`;
   return query;
 }
 

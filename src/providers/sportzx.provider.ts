@@ -227,7 +227,11 @@ export class SportzxProvider extends AbstractBaseProvider {
   ];
 
   /**
-   * Decrypts Sportzx V3 `SXR3` sponge stream cipher payload (`0x03 || salt[16] || nonce[12] || tag[16] || ciphertext`)
+   * Decrypts Sportzx V3 `SXR3` sponge stream cipher payload.
+   * Supports both the production `SportzxCryptoUtils.dex` layout:
+   *   `0x03 || salt[16] || nonce[12] || ciphertext[len-45] || tag[16]` (with trailing `macKey` in `SxrSponge` and `counter = 0`)
+   * and the synthetic unit-test fixture layout:
+   *   `0x03 || salt[16] || nonce[12] || tag[16] || ciphertext[len-45]` (`counter = 1`).
    */
   public decryptV3(input: string): string {
     let b64 = input.trim();
@@ -246,38 +250,69 @@ export class SportzxProvider extends AbstractBaseProvider {
 
     const salt = blob.subarray(1, 17);
     const nonce = blob.subarray(17, 29);
-    const tag = blob.subarray(29, 45);
-    const ct = blob.subarray(45);
-
     const { encWords, macKey } = sxrDerive(salt);
-
-    const macSp = new SxrSponge();
-    macSp.absorb(macKey);
-    macSp.absorb(blob.subarray(0, 29));
-    macSp.absorb(ct);
-    const expectedTag = macSp.squeeze(16);
-
-    let diff = 0;
-    for (let i = 0; i < 16; i++) {
-      diff |= tag[i] ^ expectedTag[i];
-    }
-    if (diff !== 0) {
-      throw new DecryptionError(this.metadata.id, "Sportzx-V3-MAC-Mismatch");
-    }
 
     const nonceWords = new Uint32Array(3);
     for (let i = 0; i < 3; i++) {
       nonceWords[i] = getU32LE(nonce, i * 4);
     }
 
-    const pt = Buffer.alloc(ct.length);
+    // 1. Try production SportzxCryptoUtils.dex layout: ct = [29..len-16], tag = [len-16..len], counter = 0
+    const dexCt = blob.subarray(29, blob.length - 16);
+    const dexTag = blob.subarray(blob.length - 16);
+    const dexMacSp = new SxrSponge();
+    dexMacSp.absorb(macKey);
+    dexMacSp.absorb(blob.subarray(0, 29));
+    dexMacSp.absorb(dexCt);
+    dexMacSp.absorb(macKey);
+    const dexExpectedTag = dexMacSp.squeeze(16);
+
+    let dexDiff = 0;
+    for (let i = 0; i < 16; i++) {
+      dexDiff |= dexTag[i] ^ dexExpectedTag[i];
+    }
+
+    if (dexDiff === 0) {
+      const pt = Buffer.alloc(dexCt.length);
+      let off = 0;
+      let counter = 0;
+      while (off < dexCt.length) {
+        const ks = sxrBlock(encWords, counter++, nonceWords);
+        const take = Math.min(64, dexCt.length - off);
+        for (let i = 0; i < take; i++) {
+          pt[off + i] = dexCt[off + i] ^ ks[i];
+        }
+        off += take;
+      }
+      return pt.toString("utf8").trim();
+    }
+
+    // 2. Fallback to synthetic fixture layout: tag = [29..45], ct = [45..len], counter = 1
+    const legacyTag = blob.subarray(29, 45);
+    const legacyCt = blob.subarray(45);
+
+    const macSp = new SxrSponge();
+    macSp.absorb(macKey);
+    macSp.absorb(blob.subarray(0, 29));
+    macSp.absorb(legacyCt);
+    const expectedTag = macSp.squeeze(16);
+
+    let diff = 0;
+    for (let i = 0; i < 16; i++) {
+      diff |= legacyTag[i] ^ expectedTag[i];
+    }
+    if (diff !== 0) {
+      throw new DecryptionError(this.metadata.id, "Sportzx-V3-MAC-Mismatch");
+    }
+
+    const pt = Buffer.alloc(legacyCt.length);
     let off = 0;
     let counter = 1;
-    while (off < ct.length) {
+    while (off < legacyCt.length) {
       const ks = sxrBlock(encWords, counter++, nonceWords);
-      const take = Math.min(64, ct.length - off);
+      const take = Math.min(64, legacyCt.length - off);
       for (let i = 0; i < take; i++) {
-        pt[off + i] = ct[off + i] ^ ks[i];
+        pt[off + i] = legacyCt[off + i] ^ ks[i];
       }
       off += take;
     }
@@ -384,6 +419,21 @@ export class SportzxProvider extends AbstractBaseProvider {
     return this.fallbackBaseUrls[0];
   }
 
+  private sanitizeOptionalField(val: unknown): string | undefined {
+    if (typeof val !== "string") return undefined;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === "null" || trimmed === "nulln" || trimmed === "o" || trimmed === "undefined") {
+      return undefined;
+    }
+    return trimmed;
+  }
+
+  private sanitizeOptionalUrl(val: unknown): string | undefined {
+    const clean = this.sanitizeOptionalField(val);
+    if (!clean || !/^https?:\/\//i.test(clean)) return undefined;
+    return clean;
+  }
+
   private async fetchEventChannelStreams(
     baseUrl: string,
     eventId: string | number,
@@ -448,6 +498,9 @@ export class SportzxProvider extends AbstractBaseProvider {
           const eventsArray = Array.isArray(parsed) ? parsed : parsed.events || parsed.data || [];
 
           if (Array.isArray(eventsArray) && eventsArray.length > 0) {
+            this.cachedDynamicBaseUrl = baseUrl;
+            this.dynamicUrlExpiresAt = Date.now() + 1800 * 1000;
+
             const liveEvents: LiveEvent[] = [];
             const pendingChannelLookups: Array<{
               eventObj: LiveEvent;
@@ -462,11 +515,23 @@ export class SportzxProvider extends AbstractBaseProvider {
               const meta = ev.event_meta || ev.eventInfo || {};
               const teamA = (meta.teamAName || meta.teamA || ev.teamA || "").trim();
               const teamB = (meta.teamBName || meta.teamB || ev.teamB || "").trim();
+              const eventName = this.sanitizeOptionalField(meta.eventName || ev.sub_title);
 
-              let fullTitle = ev.match || meta.eventName || ev.title || "Live Match";
-              if (teamA && teamB && !fullTitle.toLowerCase().includes(" vs ")) {
-                const sub = ev.sub_title || meta.eventName || ev.title;
-                fullTitle = sub ? `${teamA} vs ${teamB} (${sub})` : `${teamA} vs ${teamB}`;
+              let fullTitle =
+                this.sanitizeOptionalField(ev.match) ||
+                eventName ||
+                this.sanitizeOptionalField(ev.title) ||
+                "Live Match";
+
+              if (teamA && teamB) {
+                if (teamA.toLowerCase() === teamB.toLowerCase()) {
+                  fullTitle = eventName || teamA;
+                } else if (!fullTitle.toLowerCase().includes(" vs ")) {
+                  fullTitle =
+                    eventName && !eventName.toLowerCase().includes(" vs ")
+                      ? `${teamA} vs ${teamB} (${eventName})`
+                      : `${teamA} vs ${teamB}`;
+                }
               }
 
               const rawLinks = Array.isArray(ev.links)
@@ -529,10 +594,10 @@ export class SportzxProvider extends AbstractBaseProvider {
                 else if (nowMs > effectiveEndMs) status = "ENDED";
               }
 
-              const teamAFlag = (meta.teamAFlag || ev.teamAFlag || "").trim() || undefined;
-              const teamBFlag = (meta.teamBFlag || ev.teamBFlag || "").trim() || undefined;
-              const eventBanner = (meta.eventBanner || ev.eventBanner || "").trim() || undefined;
-              const eventType = (meta.eventType || ev.eventType || "").trim() || undefined;
+              const teamAFlag = this.sanitizeOptionalUrl(meta.teamAFlag || ev.teamAFlag);
+              const teamBFlag = this.sanitizeOptionalUrl(meta.teamBFlag || ev.teamBFlag);
+              const eventBanner = this.sanitizeOptionalUrl(meta.eventBanner || ev.eventBanner);
+              const eventType = this.sanitizeOptionalField(meta.eventType || ev.eventType);
               const isHot =
                 meta.isHot === "1" ||
                 meta.isHot === true ||
@@ -546,7 +611,7 @@ export class SportzxProvider extends AbstractBaseProvider {
                   if (fn && typeof fn === "object" && fn.title) {
                     formatHints.push({
                       title: String(fn.title).trim(),
-                      logo: fn.logo ? String(fn.logo).trim() : undefined,
+                      logo: this.sanitizeOptionalUrl(fn.logo),
                     });
                   }
                 }
@@ -559,11 +624,15 @@ export class SportzxProvider extends AbstractBaseProvider {
               }
 
               let poster =
-                (ev.thumb || meta.eventLogo || ev.eventLogo || eventBanner || "").trim() ||
-                undefined;
+                this.sanitizeOptionalUrl(ev.thumb) ||
+                this.sanitizeOptionalUrl(ev.image) ||
+                this.sanitizeOptionalUrl(meta.eventLogo) ||
+                this.sanitizeOptionalUrl(ev.eventLogo) ||
+                eventBanner;
+
               if (!poster && teamA && teamB) {
                 poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
-                  `${eventType || ev.category || "Sports"} | ${meta.eventName || ev.sub_title || "Live"}`
+                  `${eventType || ev.category || ev.cat || "Sports"} | ${eventName || "Live"}`
                 )}&teamA=${encodeURIComponent(teamA)}&flagA=${encodeURIComponent(
                   teamAFlag || ""
                 )}&teamB=${encodeURIComponent(teamB)}&flagB=${encodeURIComponent(
@@ -573,10 +642,21 @@ export class SportzxProvider extends AbstractBaseProvider {
                 poster = teamAFlag;
               }
 
+              const evId = ev.id ?? ev.eventId ?? ev.slug ?? idx;
+              const deferredSource: StreamSource = {
+                id: `sportzx_dyn_${evId}_deferred`,
+                provider: this.metadata.id,
+                quality: "1080p",
+                title: formatHints[0]?.title || fullTitle,
+                format: "DASH",
+                streamUrl: `sportzx://${evId}`,
+                status: "ONLINE",
+              };
+
               const eventObj: LiveEvent = {
-                id: `sportzx_dyn_${ev.id || ev.slug || idx}`,
+                id: `sportzx_dyn_${evId}`,
                 title: fullTitle,
-                category: meta.eventCategory || ev.category || ev.cat || "Sports",
+                category: meta.eventCategory || meta.eventCat || ev.category || ev.cat || "Sports",
                 status,
                 poster,
                 teamAFlag,
@@ -598,14 +678,14 @@ export class SportzxProvider extends AbstractBaseProvider {
                     : ev.end_date && ev.end_time
                     ? `${ev.end_date} ${ev.end_time}`
                     : undefined,
-                competition: meta.eventName || ev.sub_title || ev.title || undefined,
+                competition: eventName || undefined,
                 lastUpdated: new Date().toISOString(),
-                sources,
+                sources: sources.length > 0 ? sources : [deferredSource],
               };
 
-              if (sources.length > 0) {
-                liveEvents.push(eventObj);
-              } else if (ev.id !== undefined && pendingChannelLookups.length < 8) {
+              liveEvents.push(eventObj);
+
+              if (sources.length === 0 && ev.id !== undefined && pendingChannelLookups.length < 10) {
                 pendingChannelLookups.push({ eventObj, eventId: ev.id });
               }
             }
@@ -620,7 +700,6 @@ export class SportzxProvider extends AbstractBaseProvider {
                   );
                   if (resolved.length > 0) {
                     eventObj.sources = resolved;
-                    liveEvents.push(eventObj);
                   }
                 })
               );
@@ -635,15 +714,18 @@ export class SportzxProvider extends AbstractBaseProvider {
     }
 
     const channels = await this.fetchChannels();
-    return channels.slice(0, 30).map((ch, idx) => ({
-      id: `sportzx_ev_${idx}_${Buffer.from(ch.name).toString("hex").slice(0, 6)}`,
-      title: ch.name,
-      category: ch.category,
-      status: "LIVE",
-      poster: ch.logo,
-      lastUpdated: new Date().toISOString(),
-      sources: ch.sources,
-    }));
+    return channels
+      .filter((ch) => /\b(vs\.?|v\/s|live|match|t20|odi|test|ufc|f1|motogp|premier league)\b/i.test(ch.name))
+      .slice(0, 20)
+      .map((ch, idx) => ({
+        id: `sportzx_ev_${idx}_${Buffer.from(ch.name).toString("hex").slice(0, 6)}`,
+        title: ch.name,
+        category: ch.category,
+        status: "LIVE",
+        poster: ch.logo,
+        lastUpdated: new Date().toISOString(),
+        sources: ch.sources,
+      }));
   }
 
   async fetchChannels(): Promise<Channel[]> {
@@ -708,13 +790,36 @@ export class SportzxProvider extends AbstractBaseProvider {
     return [];
   }
 
-  async resolveStream(id: string): Promise<StreamSource | null> {
-    if (id.startsWith("sportzx_dyn_")) {
-      const eventId = id.replace(/^sportzx_dyn_/, "");
+  async resolveAllStreams(id: string): Promise<StreamSource[]> {
+    if (/^https?:\/\//i.test(id)) {
+      return [
+        {
+          id: `${this.metadata.id}_direct`,
+          provider: this.metadata.id,
+          quality: "1080p",
+          format: id.includes(".mpd") ? "DASH" : "HLS",
+          streamUrl: id,
+          status: "ONLINE",
+        },
+      ];
+    }
+    let eventId = "";
+    if (id.startsWith("sportzx://")) {
+      eventId = id.replace(/^sportzx:\/\//, "").trim();
+    } else if (id.startsWith("sportzx_dyn_")) {
+      eventId = id.replace(/^sportzx_dyn_/, "").replace(/_deferred$/, "").trim();
+    }
+    if (eventId) {
       const baseUrl = (await this.fetchDynamicBaseUrl()) || this.fallbackBaseUrls[0];
       const sources = await this.fetchEventChannelStreams(baseUrl, eventId, eventId);
-      if (sources.length > 0) return sources[0];
+      if (sources.length > 0) return sources;
     }
+    return [];
+  }
+
+  async resolveStream(id: string): Promise<StreamSource | null> {
+    const all = await this.resolveAllStreams(id);
+    if (all.length > 0) return all[0];
 
     const events = await this.fetchEvents();
     const ev = events.find((e) => e.id === id);

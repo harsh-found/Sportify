@@ -42,7 +42,7 @@ app.use("*", async (c, next) => {
   const start = performance.now();
   const requestId = crypto.randomUUID();
   c.header("X-Request-Id", requestId);
-  c.header("X-API-Version", "1.1.0");
+  c.header("X-API-Version", "1.3.0");
 
   // Support conditional ETag / If-None-Match on catalog & matches GET endpoints
   if (
@@ -100,7 +100,7 @@ app.get("/", async (c) => {
   }
   return c.json({
     service: "Sportify Live Sports Gateway",
-    version: "1.1.0",
+    version: "1.3.0",
     architecture: "Edge-Federated Multi-Provider Engine",
     status: "healthy",
     providersIntegrated: 6,
@@ -167,7 +167,7 @@ app.get("/logos/:file", async (c) => {
 app.get("/health", (c) => {
   return c.json({
     service: "Sportify Live Sports Gateway",
-    version: "1.1.0",
+    version: "1.3.0",
     architecture: "Edge-Federated Multi-Provider Engine",
     status: "healthy",
     providersIntegrated: 6,
@@ -233,7 +233,7 @@ const handleXmltvEpg = async (c: any) => {
 app.get("/api/epg.xml", handleXmltvEpg);
 app.get("/epg.xml", handleXmltvEpg);
 
-// Sportify v1.1.0 Resource-Oriented Endpoints
+// Sportify v1.3.0 Resource-Oriented Endpoints
 app.route("/api/catalog", catalogRoute);
 app.route("/api/sports", sportsRoute);
 app.route("/api/matches", matchesResourceRoute);

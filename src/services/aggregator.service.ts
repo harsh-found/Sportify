@@ -69,21 +69,21 @@ const PROVIDER_TECHNICAL_SPECS: Record<
   },
   playztv: {
     firebaseProjectId: "516859456626",
-    appIdPackage: "com.playztv.app",
+    appIdPackage: "com.playz.tv",
     cryptoAlgorithm: "Reverse Bytes + Adjacent Byte-Pair Swap + AES-128-CBC",
     protocols: ["DASH ClearKey", "HLS"],
     trustScore: 91,
   },
   livxow: {
     firebaseProjectId: "459539398637",
-    appIdPackage: "com.livxow.app",
+    appIdPackage: "com.livxow.tv",
     cryptoAlgorithm: "Substitution Cipher + Base64url pro/*.txt + AES-128-CBC",
     protocols: ["DASH ClearKey", "HLS"],
     trustScore: 89,
   },
   playfy: {
     firebaseProjectId: "239487160038",
-    appIdPackage: "com.playfytv.app",
+    appIdPackage: "com.playfy.tv",
     cryptoAlgorithm: "32-bit FNV-1a Key/IV Derivation (0x811c9dc5) + AES-128-CBC",
     protocols: ["DASH ClearKey", "HLS"],
     trustScore: 87,
@@ -821,6 +821,7 @@ export class AggregatorService {
         ageGroup: "senior" | "u19" | "u23" | "a-team" | "emerging";
         leagueId: string | null;
         sport: string;
+        sports: Set<string>;
         aliases: Set<string>;
         totalMatches: number;
         liveMatches: number;
@@ -853,6 +854,7 @@ export class AggregatorService {
           "INT",
           "ACM",
         ].includes(entry.code);
+        const defaultSport = isFootballClub ? "football" : "cricket";
         teamMap.set(entry.code, {
           id: `team_${entry.code.toLowerCase()}`,
           code: entry.code,
@@ -861,7 +863,8 @@ export class AggregatorService {
           gender: entry.gender || "men",
           ageGroup: entry.ageGroup || "senior",
           leagueId: entry.leagueId || null,
-          sport: isFootballClub ? "football" : "cricket",
+          sport: defaultSport,
+          sports: new Set([defaultSport]),
           aliases: new Set([alias, entry.code.toLowerCase(), entry.name.toLowerCase()]),
           totalMatches: 0,
           liveMatches: 0,
@@ -885,12 +888,19 @@ export class AggregatorService {
             ageGroup: side.ageGroup || "senior",
             leagueId: side.leagueId || fix.tournament?.id || null,
             sport: fix.sport,
+            sports: new Set([fix.sport.toLowerCase()]),
             aliases: new Set([side.code.toLowerCase(), side.name.toLowerCase()]),
             totalMatches: 0,
             liveMatches: 0,
             upcomingMatches: 0,
           };
           teamMap.set(side.code, entry);
+        } else {
+          if (entry.totalMatches === 0) {
+            entry.sport = fix.sport;
+            entry.sports.clear();
+          }
+          entry.sports.add(fix.sport.toLowerCase());
         }
         entry.totalMatches++;
         if (fix.schedule.isLive) entry.liveMatches++;
@@ -900,6 +910,7 @@ export class AggregatorService {
 
     let list = Array.from(teamMap.values()).map((t) => ({
       ...t,
+      sports: Array.from(t.sports),
       aliases: Array.from(t.aliases),
     }));
 
@@ -909,7 +920,9 @@ export class AggregatorService {
 
     if (options?.sport) {
       const s = options.sport.toLowerCase().trim();
-      list = list.filter((t) => t.sport.toLowerCase() === s);
+      list = list.filter(
+        (t) => t.sport.toLowerCase() === s || t.sports.some((sp) => sp.toLowerCase() === s)
+      );
     }
 
     if (options?.gender) {
@@ -987,8 +1000,18 @@ export class AggregatorService {
    */
   async getChannelDetail(channelId: string, proxyBaseUrl = "http://localhost:3000/api/proxy") {
     const target = decodeURIComponent(channelId).trim();
+    const targetLower = target.toLowerCase();
     const channels = await this.getChannels();
-    const channel = channels.find((c) => c.id === target) || null;
+    const channel =
+      channels.find(
+        (c) =>
+          c.id === target ||
+          c.id.toLowerCase() === targetLower ||
+          c.name.toLowerCase() === targetLower ||
+          ((c as Channel & { mergedIds?: string[] }).mergedIds || []).some(
+            (id) => id === target || id.toLowerCase() === targetLower
+          )
+      ) || null;
     if (!channel) return null;
 
     const resolvedSources = await this.resolveSourceList(channel.sources);
@@ -1236,7 +1259,7 @@ export class AggregatorService {
   }
 
   /**
-   * Resolves all custom provider scheme URLs (`playztv://`, `livxow://`, `sktech://`) into real HTTP manifests
+   * Resolves all custom provider scheme URLs (`playztv://`, `livxow://`, `sktech://`, `sportzx://`, `playfy://`, `cricify://`) into real HTTP manifests
    */
   private async resolveSourceList(sources: StreamSource[]): Promise<StreamSource[]> {
     const resolvedList = await Promise.all(
@@ -1260,6 +1283,27 @@ export class AggregatorService {
           if (sktech) {
             return this.resolvedStreamCache.getOrFetch(s.streamUrl, () =>
               sktech.resolveAllStreams(s.streamUrl)
+            );
+          }
+        } else if (s.streamUrl.startsWith("sportzx://")) {
+          const sportzx = this.providers.get("sportzx") as SportzxProvider | undefined;
+          if (sportzx) {
+            return this.resolvedStreamCache.getOrFetch(s.streamUrl, () =>
+              sportzx.resolveAllStreams(s.streamUrl)
+            );
+          }
+        } else if (s.streamUrl.startsWith("playfy://")) {
+          const playfy = this.providers.get("playfy") as PlayFyProvider | undefined;
+          if (playfy) {
+            return this.resolvedStreamCache.getOrFetch(s.streamUrl, () =>
+              playfy.resolveAllStreams(s.streamUrl)
+            );
+          }
+        } else if (s.streamUrl.startsWith("cricify://")) {
+          const cricify = this.providers.get("cricify") as CricifyProvider | undefined;
+          if (cricify) {
+            return this.resolvedStreamCache.getOrFetch(s.streamUrl, () =>
+              cricify.resolveAllStreams(s.streamUrl)
             );
           }
         }
@@ -1415,6 +1459,8 @@ export class AggregatorService {
   /**
    * Generates a complete IPTV M3U8 playlist across all live fixtures & channels,
    * including `#KODIPROP` ClearKey DRM directives for OTT Navigator, TiviMate, and Kodi.
+   * Uses in-memory catalog + cached stream resolution and on-the-fly proxy custom-URI resolution
+   * for sub-5ms playlist generation without network stampedes.
    */
   async generateM3uPlaylist(
     proxyBaseUrl: string,
@@ -1424,63 +1470,107 @@ export class AggregatorService {
     return this.m3uCache.getOrFetch(
       cacheKey,
       async () => {
-        const catalog = await this.getUnifiedCatalog({ sport: options?.sport });
+        const [rawEvents, catalog] = await Promise.all([
+          this.fetchAllRawProviderEvents(),
+          this.getUnifiedCatalog({ sport: options?.sport }),
+        ]);
+
+        const rawEventsById = new Map<string, LiveEvent>();
+        for (const ev of rawEvents) {
+          rawEventsById.set(ev.id, ev);
+        }
+
         const lines: string[] = [
           '#EXTM3U url-tvg="" x-tvg-url=""',
-          "#PLAYLIST:Sportify Live Sports & Streams Gateway",
+          "#PLAYLIST:Sportify Live Sports & Streams Gateway v1.3.0",
         ];
 
-        const activeFixtures = catalog.slice(0, 60);
-        const feedResults = await Promise.all(
-          activeFixtures.map((fix) =>
-            this.getFixtureFeeds(fix.canonicalKey, proxyBaseUrl).catch(() => ({
-              fixture: fix,
-              feeds: [] as RichStreamFeed[],
-            }))
-          )
-        );
+        const activeFixtures = catalog.slice(0, 80);
 
-        for (let i = 0; i < activeFixtures.length; i++) {
-          const fix = activeFixtures[i];
-          const { feeds } = feedResults[i];
-          if (feeds.length === 0) continue;
+        for (const fix of activeFixtures) {
+          const pointerIds = Object.values(fix.providerPointers);
+          const rawSources: StreamSource[] = [];
+          for (const pid of pointerIds) {
+            const ev = rawEventsById.get(pid);
+            if (ev && ev.sources.length > 0) {
+              rawSources.push(...ev.sources);
+            }
+          }
 
-          const primaryFeed = feeds[0];
+          if (rawSources.length === 0) continue;
+
+          // Expand any custom scheme sources that are already warm in resolvedStreamCache
+          const expandedSources: StreamSource[] = [];
+          const deferredCustomSources: StreamSource[] = [];
+
+          for (const src of rawSources) {
+            if (/^(?:playztv|livxow|sktech|sportzx|playfy|cricify):\/\//i.test(src.streamUrl)) {
+              const cachedResolved = this.resolvedStreamCache.get(src.streamUrl);
+              if (cachedResolved && cachedResolved.length > 0) {
+                expandedSources.push(...cachedResolved);
+              } else {
+                deferredCustomSources.push(src);
+              }
+            } else {
+              expandedSources.push(src);
+            }
+          }
+
+          const feeds = buildRichStreamFeeds(expandedSources, proxyBaseUrl);
           const groupTitle = `${fix.sport.toUpperCase()} - ${
             fix.schedule.isLive ? "LIVE" : "UPCOMING"
           }`;
           const logo = fix.posterUrl || "";
-          const displayName = `${fix.title} [${primaryFeed.language.badge}] (${primaryFeed.provenance.primaryProvider})`;
 
-          lines.push(
-            `#EXTINF:-1 tvg-id="${fix.fixtureId}" tvg-name="${fix.title.replace(
-              /"/g,
-              ""
-            )}" tvg-logo="${logo}" group-title="${groupTitle}",${displayName}`
-          );
+          if (feeds.length > 0) {
+            const primaryFeed = feeds[0];
+            const displayName = `${fix.title} [${primaryFeed.language.badge}] (${primaryFeed.provenance.primaryProvider})`;
 
-          if (primaryFeed.drm && primaryFeed.drm.clearKeys && primaryFeed.drm.clearKeys.length > 0) {
-            const ck = primaryFeed.drm.clearKeys[0];
-            lines.push("#KODIPROP:inputstream.adaptive.manifest_type=mpd");
-            lines.push("#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey");
-            lines.push(`#KODIPROP:inputstream.adaptive.license_key=${ck.kid}:${ck.key}`);
-          }
+            lines.push(
+              `#EXTINF:-1 tvg-id="${fix.fixtureId}" tvg-name="${fix.title.replace(
+                /"/g,
+                ""
+              )}" tvg-logo="${logo}" group-title="${groupTitle}",${displayName}`
+            );
 
-          if (primaryFeed.network.headers) {
-            const ua =
-              primaryFeed.network.headers["User-Agent"] ||
-              primaryFeed.network.headers["user-agent"];
-            const ref =
-              primaryFeed.network.headers["Referer"] ||
-              primaryFeed.network.headers["referer"];
-            if (ua) lines.push(`#EXTVLCOPT:http-user-agent=${ua}`);
-            if (ref) lines.push(`#EXTVLCOPT:http-referrer=${ref}`);
-          }
+            if (
+              primaryFeed.drm &&
+              primaryFeed.drm.clearKeys &&
+              primaryFeed.drm.clearKeys.length > 0
+            ) {
+              const ck = primaryFeed.drm.clearKeys[0];
+              lines.push("#KODIPROP:inputstream.adaptive.manifest_type=mpd");
+              lines.push("#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey");
+              lines.push(`#KODIPROP:inputstream.adaptive.license_key=${ck.kid}:${ck.key}`);
+            }
 
-          if (primaryFeed.protocol === "hls") {
-            lines.push(primaryFeed.network.edgeProxyFallbackUrl);
-          } else {
-            lines.push(primaryFeed.network.masterPlaylistUrl);
+            if (primaryFeed.network.headers) {
+              const ua =
+                primaryFeed.network.headers["User-Agent"] ||
+                primaryFeed.network.headers["user-agent"];
+              const ref =
+                primaryFeed.network.headers["Referer"] ||
+                primaryFeed.network.headers["referer"];
+              if (ua) lines.push(`#EXTVLCOPT:http-user-agent=${ua}`);
+              if (ref) lines.push(`#EXTVLCOPT:http-referrer=${ref}`);
+            }
+
+            if (primaryFeed.protocol === "hls") {
+              lines.push(primaryFeed.network.edgeProxyFallbackUrl);
+            } else {
+              lines.push(primaryFeed.network.masterPlaylistUrl);
+            }
+          } else if (deferredCustomSources.length > 0) {
+            // Emit on-demand proxy URL for deferred provider scheme (resolved by /api/proxy on tune-in)
+            const deferred = deferredCustomSources[0];
+            const displayName = `${fix.title} [AUTO] (${deferred.provider})`;
+            lines.push(
+              `#EXTINF:-1 tvg-id="${fix.fixtureId}" tvg-name="${fix.title.replace(
+                /"/g,
+                ""
+              )}" tvg-logo="${logo}" group-title="${groupTitle}",${displayName}`
+            );
+            lines.push(`${proxyBaseUrl}?url=${encodeURIComponent(deferred.streamUrl)}`);
           }
         }
 
@@ -1542,7 +1632,38 @@ export class AggregatorService {
           if (stale) return stale;
         }
 
-        return combined;
+        // Deduplicate channels across providers by canonicalized channel name
+        const dedupedMap = new Map<string, Channel & { mergedIds?: string[] }>();
+        for (const ch of combined) {
+          const normKey = ch.name
+            .toLowerCase()
+            .replace(/\b(hd|fhd|uhd|4k|sd|live|tv)\b/gi, "")
+            .replace(/[^a-z0-9]+/g, "")
+            .trim();
+          const key = normKey.length >= 3 ? normKey : ch.id;
+          const existing = dedupedMap.get(key);
+          if (!existing) {
+            dedupedMap.set(key, {
+              ...ch,
+              sources: [...ch.sources],
+              mergedIds: [ch.id],
+            });
+          } else {
+            if (!existing.mergedIds) existing.mergedIds = [existing.id];
+            if (!existing.mergedIds.includes(ch.id)) existing.mergedIds.push(ch.id);
+            if (!existing.logo && ch.logo) existing.logo = ch.logo;
+            const seenUrls = new Set(existing.sources.map((s) => `${s.provider}::${s.streamUrl}`));
+            for (const src of ch.sources) {
+              const srcKey = `${src.provider}::${src.streamUrl}`;
+              if (!seenUrls.has(srcKey)) {
+                seenUrls.add(srcKey);
+                existing.sources.push(src);
+              }
+            }
+          }
+        }
+
+        return Array.from(dedupedMap.values());
       }
     );
 
@@ -1678,7 +1799,7 @@ export class AggregatorService {
     const lines: string[] = [
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<!DOCTYPE tv SYSTEM "xmltv.dtd">',
-      '<tv generator-info-name="Sportify EPG Engine v1.1.0" generator-info-url="https://sportify.api">',
+      '<tv generator-info-name="Sportify EPG Engine v1.3.0" generator-info-url="https://sportify.api">',
     ];
 
     for (const fix of catalog) {
@@ -1769,9 +1890,19 @@ export class AggregatorService {
 
   /**
    * Deeply inspects an HLS or DASH manifest URL on demand, returning real parsed renditions,
-   * audio tracks, ClearKey KIDs, and edge latency.
+   * audio tracks, encryption, ClearKey KIDs, and edge latency.
+   * Automatically resolves custom provider schemes (`playztv://`, `sportzx://`, etc.) before probing.
    */
   async inspectStream(url: string, headers?: Record<string, string>): Promise<ProbeResult> {
+    if (/^(?:playztv|livxow|sktech|sportzx|playfy|cricify):\/\//i.test(url)) {
+      const resolved = await this.resolveCustomUri(url);
+      if (resolved) {
+        return streamProber.inspectManifest(resolved.streamUrl, {
+          ...(resolved.headers || {}),
+          ...(headers || {}),
+        });
+      }
+    }
     return streamProber.inspectManifest(url, headers);
   }
 

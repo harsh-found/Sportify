@@ -19,6 +19,10 @@ export interface ProbeResult {
   isFormatValid: boolean;
   manifestType?: "HLS_MASTER" | "HLS_MEDIA" | "DASH_MPD" | "BINARY_MEDIA" | "UNKNOWN";
   isLiveStream?: boolean;
+  isLowLatency?: boolean;
+  targetDurationSec?: number;
+  segmentCount?: number;
+  encryption?: "NONE" | "CLEARKEY" | "AES-128" | "SAMPLE-AES" | "CENC";
   renditions?: RenditionOption[];
   audioTracks?: ManifestAudioTrack[];
   detectedClearKeyKids?: string[];
@@ -28,7 +32,8 @@ export interface ProbeResult {
 /**
  * Pure parser for HLS Master/Media playlists and DASH MPD XML manifests.
  * Extracts real video renditions (resolution, height, bandwidth, FPS, codecs),
- * audio tracks, live status, and ClearKey KIDs directly from raw manifest text.
+ * audio tracks, live status, encryption scheme, low-latency flags, target duration,
+ * segment count, and ClearKey KIDs directly from raw manifest text.
  */
 export function parseManifestContent(
   manifestText: string,
@@ -37,6 +42,10 @@ export function parseManifestContent(
 ): {
   manifestType: "HLS_MASTER" | "HLS_MEDIA" | "DASH_MPD" | "UNKNOWN";
   isLiveStream: boolean;
+  isLowLatency: boolean;
+  targetDurationSec?: number;
+  segmentCount: number;
+  encryption: "NONE" | "CLEARKEY" | "AES-128" | "SAMPLE-AES" | "CENC";
   renditions: RenditionOption[];
   audioTracks: ManifestAudioTrack[];
   detectedClearKeyKids: string[];
@@ -50,6 +59,9 @@ export function parseManifestContent(
     return {
       manifestType: "UNKNOWN",
       isLiveStream: false,
+      isLowLatency: false,
+      segmentCount: 0,
+      encryption: "NONE",
       renditions,
       audioTracks,
       detectedClearKeyKids: [],
@@ -60,6 +72,35 @@ export function parseManifestContent(
   if (text.includes("#EXTM3U") || text.includes("#EXT-X-STREAM-INF") || text.includes("#EXTINF")) {
     const isMaster = text.includes("#EXT-X-STREAM-INF");
     const isLiveStream = !text.includes("#EXT-X-ENDLIST");
+    const isLowLatency =
+      text.includes("#EXT-X-PART-INF") ||
+      text.includes("#EXT-X-SERVER-CONTROL") ||
+      text.includes("#EXT-X-PRELOAD-HINT");
+
+    let targetDurationSec: number | undefined;
+    const tdMatch = text.match(/#EXT-X-TARGETDURATION:(\d+(?:\.\d+)?)/i);
+    if (tdMatch) {
+      targetDurationSec = Math.round(Number(tdMatch[1]));
+    }
+
+    const extInfMatches = text.match(/#EXTINF:/g);
+    const segmentCount = extInfMatches ? extInfMatches.length : 0;
+
+    let encryption: "NONE" | "CLEARKEY" | "AES-128" | "SAMPLE-AES" | "CENC" = "NONE";
+    const keyLines = text.match(/#EXT-X-(?:SESSION-)?KEY:[^\r\n]+/gi) || [];
+    for (const kl of keyLines) {
+      const methodMatch = kl.match(/METHOD=([A-Z0-9-]+)/i);
+      if (methodMatch && methodMatch[1]) {
+        const m = methodMatch[1].toUpperCase();
+        if (m === "AES-128") encryption = "AES-128";
+        else if (m.includes("SAMPLE-AES")) encryption = "SAMPLE-AES";
+      }
+      const kidHex = kl.match(/KEYID=0x([0-9a-fA-F]{32})/i);
+      if (kidHex && kidHex[1]) {
+        detectedClearKeyKids.add(kidHex[1].toLowerCase());
+        encryption = "CLEARKEY";
+      }
+    }
 
     // Extract #EXT-X-MEDIA:TYPE=AUDIO
     const mediaRegex = /#EXT-X-MEDIA:([^\r\n]+)/g;
@@ -80,6 +121,7 @@ export function parseManifestContent(
     let keyMatch: RegExpExecArray | null;
     while ((keyMatch = keyRegex.exec(text)) !== null) {
       detectedClearKeyKids.add(keyMatch[1]);
+      encryption = "CLEARKEY";
     }
 
     // Extract #EXT-X-STREAM-INF renditions
@@ -150,6 +192,10 @@ export function parseManifestContent(
     return {
       manifestType: isMaster ? "HLS_MASTER" : "HLS_MEDIA",
       isLiveStream,
+      isLowLatency,
+      targetDurationSec,
+      segmentCount,
+      encryption,
       renditions,
       audioTracks,
       detectedClearKeyKids: Array.from(detectedClearKeyKids),
@@ -159,12 +205,33 @@ export function parseManifestContent(
   // 2. DASH MPD XML (<MPD ...>)
   if (text.includes("<MPD") || text.includes("urn:mpeg:dash") || text.includes("<Representation")) {
     const isLiveStream = /type\s*=\s*["']dynamic["']/i.test(text);
+    const isLowLatency =
+      /availabilityTimeOffset/i.test(text) || /ServiceDescription/i.test(text);
+
+    let targetDurationSec: number | undefined;
+    const durMatch =
+      text.match(/maxSegmentDuration\s*=\s*["']PT(\d+(?:\.\d+)?)S["']/i) ||
+      text.match(/minimumUpdatePeriod\s*=\s*["']PT(\d+(?:\.\d+)?)S["']/i);
+    if (durMatch) {
+      targetDurationSec = Math.round(Number(durMatch[1]));
+    }
 
     // Extract cenc:default_KID
     const kidRegex = /default_KID\s*=\s*["']([0-9a-fA-F-]{32,36})["']/gi;
     let kidMatch: RegExpExecArray | null;
     while ((kidMatch = kidRegex.exec(text)) !== null) {
       detectedClearKeyKids.add(kidMatch[1].replace(/-/g, "").toLowerCase());
+    }
+
+    let encryption: "NONE" | "CLEARKEY" | "AES-128" | "SAMPLE-AES" | "CENC" = "NONE";
+    if (
+      /e2719d58-a985-b3c9-781a-b030af78d30e/i.test(text) ||
+      /org\.w3\.clearkey/i.test(text) ||
+      detectedClearKeyKids.size > 0
+    ) {
+      encryption = "CLEARKEY";
+    } else if (/ContentProtection/i.test(text)) {
+      encryption = "CENC";
     }
 
     // Extract DASH audio AdaptationSet tracks
@@ -242,9 +309,16 @@ export function parseManifestContent(
       renditions[0].isDefault = true;
     }
 
+    const segTimelineMatches = text.match(/<S\b/gi);
+    const segmentCount = segTimelineMatches ? segTimelineMatches.length : 0;
+
     return {
       manifestType: "DASH_MPD",
       isLiveStream,
+      isLowLatency,
+      targetDurationSec,
+      segmentCount,
+      encryption,
       renditions,
       audioTracks,
       detectedClearKeyKids: Array.from(detectedClearKeyKids),
@@ -254,6 +328,9 @@ export function parseManifestContent(
   return {
     manifestType: fallbackFormat === "DASH" ? "DASH_MPD" : "UNKNOWN",
     isLiveStream: false,
+    isLowLatency: false,
+    segmentCount: 0,
+    encryption: "NONE",
     renditions,
     audioTracks,
     detectedClearKeyKids: [],
@@ -273,7 +350,7 @@ export class StreamProber {
   /**
    * Probes a single stream URL using a lightweight GET request with AbortSignal
    * to verify manifest liveness, measure initial edge latency, and parse real
-   * HLS/DASH video renditions, audio tracks, and ClearKey KIDs from the first 4KB.
+   * HLS/DASH video renditions, audio tracks, encryption, and ClearKey KIDs from the first 24KB.
    */
   async probeStream(
     rawUrl: string,
@@ -338,13 +415,13 @@ export class StreamProber {
           };
         }
 
-        // Read up to 4096 bytes to confirm valid HLS (#EXTM3U) or DASH (<MPD) and extract real renditions
+        // Read up to 24KB (24576 bytes) to capture full DASH MPDs and multi-variant HLS manifests
         let firstChunk = "";
         if (response.body) {
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let bytesRead = 0;
-          while (bytesRead < 4096) {
+          while (bytesRead < 24576) {
             const { value, done } = await reader.read();
             if (done || !value) break;
             firstChunk += decoder.decode(value, { stream: true });
@@ -368,7 +445,7 @@ export class StreamProber {
         const parsedManifest = parseManifestContent(
           firstChunk,
           isDash || contentType?.includes("dash+xml") ? "DASH" : "HLS",
-          cleanUrl
+          response.url || cleanUrl
         );
 
         return {
@@ -385,6 +462,10 @@ export class StreamProber {
                 ? "BINARY_MEDIA"
                 : "UNKNOWN",
           isLiveStream: parsedManifest.isLiveStream,
+          isLowLatency: parsedManifest.isLowLatency,
+          targetDurationSec: parsedManifest.targetDurationSec,
+          segmentCount: parsedManifest.segmentCount,
+          encryption: parsedManifest.encryption,
           renditions: parsedManifest.renditions,
           audioTracks: parsedManifest.audioTracks,
           detectedClearKeyKids: parsedManifest.detectedClearKeyKids,
@@ -423,7 +504,8 @@ export class StreamProber {
   /**
    * Probes an array of RichStreamFeeds with bounded concurrency (max 6 parallel probes),
    * adjusts reliabilityScore based on real HTTP status and latency, replaces synthetic renditions
-   * with real manifest-discovered renditions when available, and demotes dead streams to the bottom.
+   * with real manifest-discovered renditions when available, attaches `health` telemetry,
+   * and demotes dead streams to the bottom.
    */
   async probeFeedsBatch(feeds: RichStreamFeed[], concurrency = 6): Promise<RichStreamFeed[]> {
     if (feeds.length === 0) return feeds;
@@ -460,6 +542,12 @@ export class StreamProber {
           ...feed,
           renditions: discoveredRenditions,
           reliabilityScore: adjustedScore,
+          health: {
+            isAlive: probe.isAlive,
+            latencyMs: probe.latencyMs,
+            statusCode: probe.statusCode,
+            lastChecked: probe.checkedAt,
+          },
         };
       }
     };

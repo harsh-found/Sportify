@@ -148,6 +148,21 @@ export class LivXowProvider extends AbstractBaseProvider {
     throw lastErr || new Error("LivXow domain failover exhausted");
   }
 
+  private sanitizeOptionalField(val: unknown): string | undefined {
+    if (typeof val !== "string") return undefined;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === "null" || trimmed === "nulln" || trimmed === "o" || trimmed === "undefined") {
+      return undefined;
+    }
+    return trimmed;
+  }
+
+  private sanitizeOptionalUrl(val: unknown): string | undefined {
+    const clean = this.sanitizeOptionalField(val);
+    if (!clean || !/^https?:\/\//i.test(clean)) return undefined;
+    return clean;
+  }
+
   async fetchEvents(): Promise<LiveEvent[]> {
     try {
       const decText = await this.fetchWithDomainFailover("events.txt");
@@ -158,6 +173,7 @@ export class LivXowProvider extends AbstractBaseProvider {
       }
 
       const liveEvents: LiveEvent[] = [];
+      const pendingLookups: Array<{ eventObj: LiveEvent; pointerUri: string }> = [];
 
       for (let i = 0; i < rawList.length; i++) {
         const item = rawList[i];
@@ -174,14 +190,13 @@ export class LivXowProvider extends AbstractBaseProvider {
 
         const teamA = (ev.teamAName || ev.teamA || "").trim();
         const teamB = (ev.teamBName || ev.teamB || "").trim();
-        const eventName = (ev.eventName || ev.title || "").trim();
+        const eventName = this.sanitizeOptionalField(ev.eventName || ev.title) || "";
+        const isHeadToHead = Boolean(teamA && teamB && teamA.toLowerCase() !== teamB.toLowerCase());
         const matchPart =
-          ev.match ||
-          (teamA && teamB && teamA !== teamB
-            ? `${teamA} vs ${teamB}`
-            : teamA || eventName || "Live Event");
+          this.sanitizeOptionalField(ev.match) ||
+          (isHeadToHead ? `${teamA} vs ${teamB}` : eventName || teamA || "Live Event");
         const fullTitle =
-          eventName && !matchPart.toLowerCase().includes(eventName.toLowerCase())
+          isHeadToHead && eventName && !matchPart.toLowerCase().includes(eventName.toLowerCase())
             ? `${eventName} (${matchPart})`
             : matchPart;
 
@@ -192,19 +207,20 @@ export class LivXowProvider extends AbstractBaseProvider {
           "base64url"
         )}`;
 
+        const pointerUri = `livxow://${linkPath || fullTitle}`;
         const source: StreamSource = {
           id: `${eventId}_src`,
           provider: this.metadata.id,
           quality: "1080p",
           format: "DASH",
-          streamUrl: `livxow://${linkPath || fullTitle}`,
+          streamUrl: pointerUri,
           status: "ONLINE",
         };
 
-        const teamAFlag = (ev.teamAFlag || "").trim() || undefined;
-        const teamBFlag = (ev.teamBFlag || "").trim() || undefined;
-        const eventBanner = (ev.eventBanner || "").trim() || undefined;
-        const eventType = (ev.eventType || "").trim() || undefined;
+        const teamAFlag = this.sanitizeOptionalUrl(ev.teamAFlag);
+        const teamBFlag = this.sanitizeOptionalUrl(ev.teamBFlag);
+        const eventBanner = this.sanitizeOptionalUrl(ev.eventBanner);
+        const eventType = this.sanitizeOptionalField(ev.eventType);
         const isHot = ev.isHot === "1" || ev.isHot === true;
         const priority = typeof ev.priority === "number" ? ev.priority : undefined;
 
@@ -214,11 +230,16 @@ export class LivXowProvider extends AbstractBaseProvider {
           for (const h of rawHints) {
             if (typeof h === "string" && h.trim()) {
               formatHints.push({ title: h.trim() });
+            } else if (h && typeof h === "object") {
+              const t = this.sanitizeOptionalField(h.name || h.title);
+              if (t) {
+                formatHints.push({ title: t, logo: this.sanitizeOptionalUrl(h.logo) });
+              }
             }
           }
         }
 
-        let poster = (ev.eventLogo || eventBanner || "").trim() || undefined;
+        let poster = this.sanitizeOptionalUrl(ev.eventLogo) || eventBanner;
         if (!poster && teamA && teamB) {
           poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
             `${eventType || ev.category || "Sports"} | ${eventName || "Live"}`
@@ -231,7 +252,7 @@ export class LivXowProvider extends AbstractBaseProvider {
           poster = teamAFlag;
         }
 
-        liveEvents.push({
+        const eventObj: LiveEvent = {
           id: eventId,
           title: fullTitle,
           category: ev.category || ev.cat || "Sports",
@@ -249,7 +270,24 @@ export class LivXowProvider extends AbstractBaseProvider {
           competition: eventName || undefined,
           lastUpdated: new Date().toISOString(),
           sources: [source],
-        });
+        };
+
+        liveEvents.push(eventObj);
+
+        if (linkPath && pendingLookups.length < 8) {
+          pendingLookups.push({ eventObj, pointerUri });
+        }
+      }
+
+      if (pendingLookups.length > 0) {
+        await Promise.allSettled(
+          pendingLookups.map(async ({ eventObj, pointerUri }) => {
+            const resolved = await this.resolveAllStreams(pointerUri);
+            if (resolved.length > 0) {
+              eventObj.sources = resolved;
+            }
+          })
+        );
       }
 
       return liveEvents;
@@ -324,6 +362,18 @@ export class LivXowProvider extends AbstractBaseProvider {
   async resolveAllStreams(id: string): Promise<StreamSource[]> {
     try {
       let relativeLink = "";
+      if (/^https?:\/\//i.test(id)) {
+        return [
+          {
+            id: `${this.metadata.id}_direct`,
+            provider: this.metadata.id,
+            quality: "1080p",
+            format: id.includes(".mpd") ? "DASH" : "HLS",
+            streamUrl: id,
+            status: "ONLINE",
+          },
+        ];
+      }
       if (id.startsWith("livxow://")) {
         relativeLink = id.replace("livxow://", "");
       } else if (id.startsWith("livxow_cat_")) {
@@ -372,35 +422,35 @@ export class LivXowProvider extends AbstractBaseProvider {
         }
       }
 
-      const resolvedSources: StreamSource[] = [];
-      for (let i = 0; i < streams.length; i++) {
-        let target = streams[i];
-        if (typeof target?.channel === "string") {
-          try {
-            target = JSON.parse(target.channel);
-          } catch {
-            continue;
+      const built = await Promise.all(
+        streams.map(async (rawItem, i) => {
+          let target = rawItem;
+          if (typeof target?.channel === "string") {
+            try {
+              target = JSON.parse(target.channel);
+            } catch {
+              return null;
+            }
           }
-        }
-        const src = await this.buildStreamSourceFromEntry({
-          id: `${id}_resolved_${i}`,
-          rawUrl: target.link || target.url || target.m3u8 || "",
-          tokenApi: target.tokenApi,
-          quality: target.name || target.title || "1080p",
-          title: target.name || target.title,
-          formatHint: target.type,
-          referer: target.referer,
-          origin: target.origin,
-          userAgent: target.userAgent,
-          drmScheme: target.drmScheme || (target.api || target.link_key ? "clearkey" : undefined),
-          drmLicense: target.drmLicense || target.api || target.link_key,
-        });
-        if (src) {
-          resolvedSources.push(src);
-        }
-      }
+          if (!target || typeof target !== "object") return null;
+          return this.buildStreamSourceFromEntry({
+            id: `${id}_resolved_${i}`,
+            rawUrl: target.link || target.url || target.stream_url || target.m3u8 || "",
+            tokenApi: target.tokenApi,
+            quality: target.name || target.title || "1080p",
+            title: target.name || target.title,
+            formatHint: target.type,
+            referer: target.referer,
+            origin: target.origin,
+            userAgent: target.userAgent,
+            drmScheme: target.drmScheme || (target.api || target.drm || target.link_key ? "clearkey" : undefined),
+            drmLicense: target.drmLicense || target.drm || target.api || target.link_key,
+            extraHeaders: target.headers && typeof target.headers === "object" ? target.headers : undefined,
+          });
+        })
+      );
 
-      return resolvedSources;
+      return built.filter((s): s is StreamSource => s !== null);
     } catch (error) {
       this.logError(`Failed to resolve LivXow streams for ${id}`, error);
       return [];

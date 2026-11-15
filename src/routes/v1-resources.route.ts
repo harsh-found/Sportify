@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { aggregatorService } from "../services/aggregator.service";
 
-const API_VERSION = "1.1.0";
+const API_VERSION = "1.3.0";
 
 export const matchesResourceRoute = new Hono();
 

@@ -140,6 +140,18 @@ export const StreamHealthCheckSchema = z.object({
 });
 export type StreamHealthCheck = z.infer<typeof StreamHealthCheckSchema>;
 
+export const PlaybackCompatibilitySchema = z.object({
+  webHlsJs: z.boolean(),
+  webShakaDash: z.boolean(),
+  safariNativeHls: z.boolean(),
+  androidExoPlayer: z.boolean(),
+  iptvVlcKodi: z.boolean(),
+  requiresClearKeyDrm: z.boolean(),
+  requiresCustomHeaders: z.boolean(),
+  recommendedPlayer: z.enum(["hls.js", "shaka-player", "native-hls", "exo-kodi"]),
+});
+export type PlaybackCompatibility = z.infer<typeof PlaybackCompatibilitySchema>;
+
 export const RichStreamFeedSchema = z.object({
   streamId: z.string(),
   channelName: z.string(),
@@ -153,6 +165,8 @@ export const RichStreamFeedSchema = z.object({
   network: NetworkEndpointsSchema,
   hasPreParsedRenditions: z.boolean(),
   renditions: z.array(RenditionSchema),
+  playbackCompatibility: PlaybackCompatibilitySchema.optional(),
   health: StreamHealthCheckSchema.optional(),
 });
 export type RichStreamFeed = z.infer<typeof RichStreamFeedSchema>;
+

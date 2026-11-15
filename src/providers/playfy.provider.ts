@@ -178,6 +178,41 @@ export class PlayFyProvider extends AbstractBaseProvider {
     }
   }
 
+  private sanitizeOptionalField(val: unknown): string | undefined {
+    if (typeof val !== "string") return undefined;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === "null" || trimmed === "nulln" || trimmed === "o" || trimmed === "undefined") {
+      return undefined;
+    }
+    return trimmed;
+  }
+
+  private sanitizeOptionalUrl(val: unknown): string | undefined {
+    const clean = this.sanitizeOptionalField(val);
+    if (!clean || !/^https?:\/\//i.test(clean)) return undefined;
+    return clean;
+  }
+
+  private parsePlayFyTimeMs(val: unknown): number {
+    if (val === undefined || val === null || val === "") return 0;
+    const num = Number(val);
+    if (!Number.isNaN(num) && num > 1_000_000_000) {
+      return num < 10_000_000_000 ? num * 1000 : num;
+    }
+    const str = String(val).trim();
+    const m = str.match(
+      /^(\d{4})[/-](\d{2})[/-](\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\s*([+-]\d{2}):?(\d{2}))?$/
+    );
+    if (m) {
+      const [, y, mo, d, t, tzH, tzM] = m;
+      const tz = tzH && tzM ? `${tzH}:${tzM}` : "Z";
+      const parsedMs = Date.parse(`${y}-${mo}-${d}T${t}${tz}`);
+      if (!Number.isNaN(parsedMs)) return parsedMs;
+    }
+    const fallbackMs = Date.parse(str);
+    return Number.isNaN(fallbackMs) ? 0 : fallbackMs;
+  }
+
   private async fetchDynamicBaseUrl(): Promise<string> {
     if (this.cachedBaseUrl && Date.now() < this.baseUrlExpiresAt) {
       return this.cachedBaseUrl;
@@ -187,12 +222,18 @@ export class PlayFyProvider extends AbstractBaseProvider {
       projectIdOrNumber: "239487160038",
       apiKey: "AIzaSyDdHIwVAD3XgP5bEwZOcR1QIz7gO5q5EoM",
       appId: "1:239487160038:android:308875071ce6f0fd48f527",
-      packageName: "com.playfytv.app",
+      packageName: "com.playfy.tv",
+      certSha1: "31CD6939D1BEAE32D1B0EF2D9460B170116A1885",
     });
 
     if (entries) {
       const apiUrl =
-        entries.api_url || entries.base_url || entries.domain || entries.url || entries.playfy_api;
+        entries.baseUrl ||
+        entries.api_url ||
+        entries.base_url ||
+        entries.domain ||
+        entries.url ||
+        entries.playfy_api;
       if (apiUrl && apiUrl.startsWith("http")) {
         this.cachedBaseUrl = apiUrl.replace(/\/$/, "");
         this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
@@ -210,7 +251,7 @@ export class PlayFyProvider extends AbstractBaseProvider {
   ): Promise<StreamSource[]> {
     try {
       const res = await this.safeFetch(`${baseUrl}/channels/${channelId}.json`, {
-        headers: { "User-Agent": "okhttp/4.12.0" },
+        headers: { "User-Agent": "PLAYFy/1.7 (Android)" },
         timeoutMs: 4000,
         ignoreCircuitBreaker: true,
       });
@@ -236,7 +277,7 @@ export class PlayFyProvider extends AbstractBaseProvider {
           rawUrl,
           tokenApi: s.tokenApi,
           quality: s.quality || s.name || s.title || "1080p",
-          title: s.title || s.name || eventTitle,
+          title: (s.title || s.name || eventTitle || "").trim(),
           referer: s.referer,
           origin: s.origin,
           userAgent: s.userAgent || s.user_agent,
@@ -260,7 +301,7 @@ export class PlayFyProvider extends AbstractBaseProvider {
     for (const base of candidates) {
       try {
         const res = await this.safeFetch(`${base}/cats/live-events.json`, {
-          headers: { "User-Agent": "okhttp/4.12.0" },
+          headers: { "User-Agent": "PLAYFy/1.7 (Android)" },
           ignoreCircuitBreaker: true,
         });
         const text = await res.text();
@@ -274,24 +315,62 @@ export class PlayFyProvider extends AbstractBaseProvider {
           const parsed = JSON.parse(jsonStr);
           const eventsArr = Array.isArray(parsed)
             ? parsed
-            : parsed.events || parsed.data || parsed.matches || [];
+            : parsed.channels || parsed.events || parsed.data || parsed.matches || [];
           const liveEvents: LiveEvent[] = [];
+          const pendingChannelLookups: Array<{
+            eventObj: LiveEvent;
+            eventId: string | number;
+          }> = [];
 
-          for (const ev of eventsArr) {
+          for (let idx = 0; idx < eventsArr.length; idx++) {
+            const ev = eventsArr[idx];
+            if (ev.publish !== undefined && String(ev.publish) !== "1" && ev.publish !== true) {
+              continue;
+            }
             const info = ev.eventInfo || ev;
-            let title = ev.title || info.eventName || ev.name || "Live Match";
-            if (info.teamA && info.teamB && !title.toLowerCase().includes(" vs ")) {
-              title = info.eventName
-                ? `${info.teamA} vs ${info.teamB} (${info.eventName})`
-                : `${info.teamA} vs ${info.teamB}`;
+            const teamA = String(info.teamA || "").trim();
+            const teamB = String(info.teamB || "").trim();
+            const eventName = this.sanitizeOptionalField(info.eventName);
+
+            let title =
+              this.sanitizeOptionalField(ev.title) ||
+              eventName ||
+              this.sanitizeOptionalField(ev.name) ||
+              "Live Match";
+
+            if (teamA && teamB) {
+              if (teamA.toLowerCase() === teamB.toLowerCase()) {
+                title = eventName || teamA;
+              } else if (!title.toLowerCase().includes(" vs ")) {
+                title =
+                  eventName && !eventName.toLowerCase().includes(" vs ")
+                    ? `${teamA} vs ${teamB} (${eventName})`
+                    : `${teamA} vs ${teamB}`;
+              }
             }
 
             const rawLinks = ev.formats || ev.streams || ev.links || ev.channels || [];
             const sources: StreamSource[] = [];
+            const formatHints: Array<{ title: string; logo?: string }> = [];
 
             for (const s of rawLinks) {
+              if (typeof s === "string") {
+                if (s.trim()) {
+                  formatHints.push({ title: s.trim() });
+                }
+                continue;
+              }
+              if (!s || typeof s !== "object") continue;
               const rawUrl = s.webLink || s.url || s.link || s.stream_url || "";
-              if (!rawUrl) continue;
+              if (!rawUrl) {
+                if (s.title || s.name) {
+                  formatHints.push({
+                    title: String(s.title || s.name).trim(),
+                    logo: this.sanitizeOptionalUrl(s.logo),
+                  });
+                }
+                continue;
+              }
               const drmRaw =
                 s.api ||
                 s.drmLicense ||
@@ -314,84 +393,122 @@ export class PlayFyProvider extends AbstractBaseProvider {
               }
             }
 
-            if (sources.length > 0) {
-              const nowSec = Math.floor(Date.now() / 1000);
-              const startSec = Number(ev.start_time || ev.startTime || 0);
-              const endSec = Number(ev.end_time || ev.endTime || 0);
-              let status: "LIVE" | "UPCOMING" | "ENDED" = "LIVE";
+            const startMs = this.parsePlayFyTimeMs(info.startTime ?? ev.start_time ?? ev.startTime);
+            const endMs = this.parsePlayFyTimeMs(info.endTime ?? ev.end_time ?? ev.endTime);
+            const nowMs = Date.now();
+            let status: "LIVE" | "UPCOMING" | "ENDED" = "LIVE";
 
-              if (startSec > 0 && endSec > 0) {
-                if (nowSec < startSec - 900) status = "UPCOMING";
-                else if (nowSec > endSec) status = "ENDED";
-              } else if (typeof ev.status === "string") {
-                const upper = ev.status.toUpperCase();
-                if (upper === "UPCOMING") status = "UPCOMING";
-                else if (upper === "ENDED" || upper === "COMPLETED") status = "ENDED";
-              }
-
-              const teamAFlag = (info.teamAFlag || ev.teamAFlag || "").trim() || undefined;
-              const teamBFlag = (info.teamBFlag || ev.teamBFlag || "").trim() || undefined;
-              const eventBanner = (info.eventBanner || ev.eventBanner || "").trim() || undefined;
-              const eventType = (info.eventType || ev.eventType || "").trim() || undefined;
-              const isHot =
-                info.isHot === "1" ||
-                info.isHot === true ||
-                ev.isHot === "1" ||
-                ev.isHot === true;
-              const priority = typeof ev.priority === "number" ? ev.priority : undefined;
-
-              let poster =
-                (info.eventLogo || ev.poster || ev.logo || ev.image || eventBanner || "").trim() ||
-                undefined;
-              if (!poster && info.teamA && info.teamB) {
-                poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
-                  `${eventType || info.eventCat || "Sports"} | ${info.eventName || "Live"}`
-                )}&teamA=${encodeURIComponent(String(info.teamA).trim())}&flagA=${encodeURIComponent(
-                  teamAFlag || ""
-                )}&teamB=${encodeURIComponent(String(info.teamB).trim())}&flagB=${encodeURIComponent(
-                  teamBFlag || ""
-                )}&time=${encodeURIComponent("LIVE")}`;
-              } else if (!poster) {
-                poster = teamAFlag;
-              }
-
-              liveEvents.push({
-                id: `playfy_${ev.id || ev.slug || liveEvents.length}`,
-                title,
-                category: info.eventCat || ev.cat || ev.category || ev.sport || "Sports",
-                status,
-                poster,
-                teamAFlag,
-                teamBFlag,
-                eventBanner,
-                eventType,
-                isHot,
-                priority,
-                startTime:
-                  startSec > 0
-                    ? new Date(startSec * 1000).toISOString()
-                    : typeof info.startTime === "string"
-                    ? info.startTime
-                    : undefined,
-                endTime:
-                  endSec > 0
-                    ? new Date(endSec * 1000).toISOString()
-                    : typeof info.endTime === "string"
-                    ? info.endTime
-                    : undefined,
-                competition: info.eventName || undefined,
-                lastUpdated: new Date().toISOString(),
-                sources,
-              });
+            if (startMs > 0) {
+              const effectiveEndMs = endMs > startMs ? endMs : startMs + 4 * 3600 * 1000;
+              if (nowMs < startMs - 900_000) status = "UPCOMING";
+              else if (nowMs > effectiveEndMs) status = "ENDED";
+            } else if (typeof ev.status === "string") {
+              const upper = ev.status.toUpperCase();
+              if (upper === "UPCOMING") status = "UPCOMING";
+              else if (upper === "ENDED" || upper === "COMPLETED") status = "ENDED";
             }
+
+            const teamAFlag = this.sanitizeOptionalUrl(info.teamAFlag || ev.teamAFlag);
+            const teamBFlag = this.sanitizeOptionalUrl(info.teamBFlag || ev.teamBFlag);
+            const eventBanner = this.sanitizeOptionalUrl(info.eventBanner || ev.eventBanner);
+            const eventType = this.sanitizeOptionalField(info.eventType || ev.eventType);
+            const isHot =
+              info.isHot === "1" ||
+              info.isHot === true ||
+              info.isPinned === 1 ||
+              info.isTop === 1 ||
+              ev.isHot === "1" ||
+              ev.isHot === true;
+            const priority = typeof ev.priority === "number" ? ev.priority : undefined;
+
+            let poster =
+              this.sanitizeOptionalUrl(info.eventLogo) ||
+              this.sanitizeOptionalUrl(ev.poster) ||
+              this.sanitizeOptionalUrl(ev.logo) ||
+              this.sanitizeOptionalUrl(ev.image) ||
+              eventBanner;
+
+            if (!poster && teamA && teamB) {
+              poster = `https://live-card-png.cricify.workers.dev/?title=${encodeURIComponent(
+                `${eventType || info.eventCat || ev.category || "Sports"} | ${eventName || "Live"}`
+              )}&teamA=${encodeURIComponent(teamA)}&flagA=${encodeURIComponent(
+                teamAFlag || ""
+              )}&teamB=${encodeURIComponent(teamB)}&flagB=${encodeURIComponent(
+                teamBFlag || ""
+              )}&time=${encodeURIComponent("LIVE")}`;
+            } else if (!poster) {
+              poster = teamAFlag;
+            }
+
+            const evId = ev.id ?? ev.slug ?? idx;
+            const deferredSource: StreamSource = {
+              id: `playfy_${evId}_deferred`,
+              provider: this.metadata.id,
+              quality: "1080p",
+              title: formatHints[0]?.title || title,
+              format: "DASH",
+              streamUrl: `playfy://${evId}`,
+              status: "ONLINE",
+            };
+
+            const eventObj: LiveEvent = {
+              id: `playfy_${evId}`,
+              title,
+              category: info.eventCat || ev.category || ev.cat || ev.sport || "Sports",
+              status,
+              poster,
+              teamAFlag,
+              teamBFlag,
+              eventBanner,
+              eventType,
+              isHot,
+              priority,
+              formatHints: formatHints.length > 0 ? formatHints : undefined,
+              startTime:
+                startMs > 0
+                  ? new Date(startMs).toISOString()
+                  : typeof info.startTime === "string"
+                  ? info.startTime
+                  : undefined,
+              endTime:
+                endMs > 0
+                  ? new Date(endMs).toISOString()
+                  : typeof info.endTime === "string"
+                  ? info.endTime
+                  : undefined,
+              competition: eventName || undefined,
+              lastUpdated: new Date().toISOString(),
+              sources: sources.length > 0 ? sources : [deferredSource],
+            };
+
+            liveEvents.push(eventObj);
+
+            if (sources.length === 0 && ev.id !== undefined && pendingChannelLookups.length < 10) {
+              pendingChannelLookups.push({ eventObj, eventId: ev.id });
+            }
+          }
+
+          if (pendingChannelLookups.length > 0) {
+            await Promise.allSettled(
+              pendingChannelLookups.map(async ({ eventObj, eventId }) => {
+                const resolved = await this.fetchChannelStreamsById(
+                  base,
+                  eventId,
+                  eventObj.title
+                );
+                if (resolved.length > 0) {
+                  eventObj.sources = resolved;
+                }
+              })
+            );
           }
 
           if (liveEvents.length > 0) return liveEvents;
 
-          // If /cats/live-events.json has no active inline formats yet, resolve active category channels from /cc.json
+          // If /cats/live-events.json has no active events, resolve active category channels from /cc.json
           try {
             const ccRes = await this.safeFetch(`${base}/cc.json`, {
-              headers: { "User-Agent": "okhttp/4.12.0" },
+              headers: { "User-Agent": "PLAYFy/1.7 (Android)" },
               timeoutMs: 4000,
               ignoreCircuitBreaker: true,
             });
@@ -410,9 +527,9 @@ export class PlayFyProvider extends AbstractBaseProvider {
                     liveEvents.push({
                       id: `playfy_cat_${cat.id}`,
                       title: cat.title || cat.name || resolved[0].title || "PlayFy Live",
-                      category: "Cricket",
+                      category: "Sports",
                       status: "LIVE",
-                      poster: cat.image || cat.logo,
+                      poster: this.sanitizeOptionalUrl(cat.image || cat.logo),
                       lastUpdated: new Date().toISOString(),
                       sources: resolved,
                     });
@@ -431,17 +548,20 @@ export class PlayFyProvider extends AbstractBaseProvider {
       }
     }
 
-    // Fallback to M3U channels
+    // Fallback to M3U channels that look like actual sports events
     const channels = await this.fetchChannels();
-    return channels.slice(0, 25).map((ch, idx) => ({
-      id: `playfy_ev_${idx}`,
-      title: ch.name,
-      category: ch.category,
-      status: "LIVE" as const,
-      poster: ch.logo,
-      lastUpdated: new Date().toISOString(),
-      sources: ch.sources,
-    }));
+    return channels
+      .filter((ch) => /\b(vs\.?|v\/s|live|match|t20|odi|test|ufc|f1|motogp|premier league)\b/i.test(ch.name))
+      .slice(0, 20)
+      .map((ch, idx) => ({
+        id: `playfy_ev_${idx}`,
+        title: ch.name,
+        category: ch.category,
+        status: "LIVE" as const,
+        poster: ch.logo,
+        lastUpdated: new Date().toISOString(),
+        sources: ch.sources,
+      }));
   }
 
   async fetchChannels(): Promise<Channel[]> {
@@ -509,13 +629,26 @@ export class PlayFyProvider extends AbstractBaseProvider {
     return [];
   }
 
-  async resolveStream(id: string): Promise<StreamSource | null> {
-    if (id.startsWith("playfy_")) {
-      const chId = id.replace(/^playfy_/, "");
+  async resolveAllStreams(id: string): Promise<StreamSource[]> {
+    let chId = "";
+    if (id.startsWith("playfy://")) {
+      chId = id.replace(/^playfy:\/\//, "").trim();
+    } else if (id.startsWith("playfy_cat_")) {
+      chId = id.replace(/^playfy_cat_/, "").replace(/_deferred$/, "").trim();
+    } else if (id.startsWith("playfy_")) {
+      chId = id.replace(/^playfy_/, "").replace(/_deferred$/, "").trim();
+    }
+    if (chId) {
       const base = await this.fetchDynamicBaseUrl();
       const resolved = await this.fetchChannelStreamsById(base, chId, chId);
-      if (resolved.length > 0) return resolved[0];
+      if (resolved.length > 0) return resolved;
     }
+    return [];
+  }
+
+  async resolveStream(id: string): Promise<StreamSource | null> {
+    const all = await this.resolveAllStreams(id);
+    if (all.length > 0) return all[0];
 
     const events = await this.fetchEvents();
     const ev = events.find((e) => e.id === id);

@@ -313,7 +313,73 @@ export const TEAM_ALIASES: Record<string, TeamAliasEntry> = {
   "inter milan": { code: "INT", name: "Inter Milan", gender: "men" },
   acm: { code: "ACM", name: "AC Milan", gender: "men" },
   "ac milan": { code: "ACM", name: "AC Milan", gender: "men" },
+  whu: { code: "WHU", name: "West Ham United", gender: "men" },
+  "west ham": { code: "WHU", name: "West Ham United", gender: "men" },
+  "west ham united": { code: "WHU", name: "West Ham United", gender: "men" },
+  "west ham w": { code: "WHUW", name: "West Ham United Women", gender: "women" },
+  "charlton athletic": { code: "CHA", name: "Charlton Athletic", gender: "men" },
+  "charlton athletic wfc": { code: "CHAW", name: "Charlton Athletic Women", gender: "women" },
+  "birmingham city": { code: "BCFC", name: "Birmingham City", gender: "men" },
+  "birmingham city wfc": { code: "BCFCW", name: "Birmingham City Women", gender: "women" },
+  // European & World Football National Teams
+  fra: { code: "FRA", name: "France", gender: "men", ageGroup: "senior" },
+  france: { code: "FRA", name: "France", gender: "men", ageGroup: "senior" },
+  tur: { code: "TUR", name: "Turkiye", gender: "men", ageGroup: "senior" },
+  turkiye: { code: "TUR", name: "Turkiye", gender: "men", ageGroup: "senior" },
+  turkey: { code: "TUR", name: "Turkiye", gender: "men", ageGroup: "senior" },
+  bel: { code: "BEL", name: "Belgium", gender: "men", ageGroup: "senior" },
+  belgium: { code: "BEL", name: "Belgium", gender: "men", ageGroup: "senior" },
+  esp: { code: "ESP", name: "Spain", gender: "men", ageGroup: "senior" },
+  spain: { code: "ESP", name: "Spain", gender: "men", ageGroup: "senior" },
+  ger: { code: "GER", name: "Germany", gender: "men", ageGroup: "senior" },
+  germany: { code: "GER", name: "Germany", gender: "men", ageGroup: "senior" },
+  por: { code: "POR", name: "Portugal", gender: "men", ageGroup: "senior" },
+  portugal: { code: "POR", name: "Portugal", gender: "men", ageGroup: "senior" },
+  cro: { code: "CRO", name: "Croatia", gender: "men", ageGroup: "senior" },
+  croatia: { code: "CRO", name: "Croatia", gender: "men", ageGroup: "senior" },
+  cze: { code: "CZE", name: "Czechia", gender: "men", ageGroup: "senior" },
+  czechia: { code: "CZE", name: "Czechia", gender: "men", ageGroup: "senior" },
+  "czech republic": { code: "CZE", name: "Czechia", gender: "men", ageGroup: "senior" },
+  sui: { code: "SUI", name: "Switzerland", gender: "men", ageGroup: "senior" },
+  switzerland: { code: "SUI", name: "Switzerland", gender: "men", ageGroup: "senior" },
+  aut: { code: "AUT", name: "Austria", gender: "men", ageGroup: "senior" },
+  austria: { code: "AUT", name: "Austria", gender: "men", ageGroup: "senior" },
+  den: { code: "DEN", name: "Denmark", gender: "men", ageGroup: "senior" },
+  denmark: { code: "DEN", name: "Denmark", gender: "men", ageGroup: "senior" },
+  swe: { code: "SWE", name: "Sweden", gender: "men", ageGroup: "senior" },
+  sweden: { code: "SWE", name: "Sweden", gender: "men", ageGroup: "senior" },
+  nor: { code: "NOR", name: "Norway", gender: "men", ageGroup: "senior" },
+  norway: { code: "NOR", name: "Norway", gender: "men", ageGroup: "senior" },
+  pol: { code: "POL", name: "Poland", gender: "men", ageGroup: "senior" },
+  poland: { code: "POL", name: "Poland", gender: "men", ageGroup: "senior" },
+  srb: { code: "SRB", name: "Serbia", gender: "men", ageGroup: "senior" },
+  serbia: { code: "SRB", name: "Serbia", gender: "men", ageGroup: "senior" },
+  ukr: { code: "UKR", name: "Ukraine", gender: "men", ageGroup: "senior" },
+  ukraine: { code: "UKR", name: "Ukraine", gender: "men", ageGroup: "senior" },
+  wal: { code: "WAL", name: "Wales", gender: "men", ageGroup: "senior" },
+  wales: { code: "WAL", name: "Wales", gender: "men", ageGroup: "senior" },
+  arg: { code: "ARG", name: "Argentina", gender: "men", ageGroup: "senior" },
+  argentina: { code: "ARG", name: "Argentina", gender: "men", ageGroup: "senior" },
+  bra: { code: "BRA", name: "Brazil", gender: "men", ageGroup: "senior" },
+  brazil: { code: "BRA", name: "Brazil", gender: "men", ageGroup: "senior" },
 };
+
+/**
+ * Folds Unicode diacritics and Turkish/Latin special letters into clean ASCII
+ * so e.g. "Türkiye" -> "Turkiye", "São Paulo" -> "Sao Paulo", "Atlético" -> "Atletico".
+ */
+export function normalizeUnicodeText(input: string): string {
+  return (input || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/İ/g, "I")
+    .replace(/ß/g, "ss")
+    .replace(/ø/g, "o")
+    .replace(/Ø/g, "O")
+    .replace(/ł/g, "l")
+    .replace(/Ł/g, "L");
+}
 
 /**
  * Known League / Tournament Signatures
@@ -419,6 +485,46 @@ export const TOURNAMENT_SIGNATURES: {
     sport: "football",
   },
   {
+    pattern: /\b(saff championship|saff cup)\b/i,
+    info: { id: "tourn_saff", name: "SAFF Championship", shortName: "SAFF Cup", category: "International Football" },
+    sport: "football",
+  },
+  {
+    pattern: /\b(uefa nations league|(?<!volleyball\s)(?<!fivb\s)nations league)\b/i,
+    info: { id: "tourn_unl", name: "UEFA Nations League", shortName: "Nations League", category: "International Football" },
+    sport: "football",
+  },
+  {
+    pattern: /\b(abu dhabi t10|t10 league)\b/i,
+    info: { id: "tourn_adt10", name: "Abu Dhabi T10 League", shortName: "Abu Dhabi T10", category: "T10 Franchise League" },
+    sport: "cricket",
+  },
+  {
+    pattern: /\b(emerging nations trophy|emerging teams asia cup)\b/i,
+    info: { id: "tourn_emerging", name: "ACC Emerging Teams Cup", shortName: "Emerging Cup", category: "International Cricket" },
+    sport: "cricket",
+  },
+  {
+    pattern: /\b(one day international|odi series)\b/i,
+    info: { id: "tourn_odi", name: "ICC One Day International Series", shortName: "ODI Series", category: "International Cricket" },
+    sport: "cricket",
+  },
+  {
+    pattern: /\b(t20 international|t20i series)\b/i,
+    info: { id: "tourn_t20i", name: "ICC T20 International Series", shortName: "T20I Series", category: "International Cricket" },
+    sport: "cricket",
+  },
+  {
+    pattern: /\b(sheffield shield)\b/i,
+    info: { id: "tourn_sheffield", name: "Sheffield Shield", shortName: "Sheffield Shield", category: "Domestic First-Class" },
+    sport: "cricket",
+  },
+  {
+    pattern: /\b(csa t20|t20 challenge)\b/i,
+    info: { id: "tourn_csat20", name: "CSA T20 Challenge", shortName: "CSA T20", category: "Domestic T20" },
+    sport: "cricket",
+  },
+  {
     pattern: /\b(serie a)\b/i,
     info: { id: "tourn_seriea", name: "Serie A", shortName: "Serie A", category: "Italian Football" },
     sport: "football",
@@ -426,6 +532,16 @@ export const TOURNAMENT_SIGNATURES: {
   {
     pattern: /\b(bundesliga)\b/i,
     info: { id: "tourn_bundesliga", name: "Bundesliga", shortName: "Bundesliga", category: "German Football" },
+    sport: "football",
+  },
+  {
+    pattern: /\b(ligue 1)\b/i,
+    info: { id: "tourn_ligue1", name: "Ligue 1", shortName: "Ligue 1", category: "French Football" },
+    sport: "football",
+  },
+  {
+    pattern: /\b(saudi pro league|roshn saudi)\b/i,
+    info: { id: "tourn_spl", name: "Saudi Pro League", shortName: "Saudi Pro League", category: "Club Football" },
     sport: "football",
   },
   {
@@ -449,14 +565,29 @@ export const TOURNAMENT_SIGNATURES: {
     sport: "mma",
   },
   {
+    pattern: /\b(matchroom boxing|queensberry|zuffa boxing|ring iv|world boxing)\b/i,
+    info: { id: "tourn_proboxing", name: "World Championship Boxing", shortName: "Pro Boxing", category: "Boxing" },
+    sport: "mma",
+  },
+  {
     pattern: /\b(wwe|smackdown|wrestlemania|monday night raw|\bnxt\b)\b/i,
     info: { id: "tourn_wwe", name: "World Wrestling Entertainment", shortName: "WWE", category: "Pro Wrestling" },
+    sport: "wwe",
+  },
+  {
+    pattern: /\b(\baew\b|all elite wrestling)\b/i,
+    info: { id: "tourn_aew", name: "All Elite Wrestling", shortName: "AEW", category: "Pro Wrestling" },
     sport: "wwe",
   },
   {
     pattern: /\b(pro kabaddi|\bpkl\b)\b/i,
     info: { id: "tourn_pkl", name: "Pro Kabaddi League", shortName: "PKL", category: "Kabaddi" },
     sport: "kabaddi",
+  },
+  {
+    pattern: /\b(tour de france|giro d'?italia|vuelta a espana|uci world tour)\b/i,
+    info: { id: "tourn_tdf", name: "Tour de France", shortName: "Tour de France", category: "World Tour Cycling" },
+    sport: "cycling",
   },
 ];
 
@@ -535,8 +666,8 @@ export function extractMatchStage(title: string): string | null {
  * Detects sport category from raw category and title strings
  */
 export function detectSport(rawCategory: string, rawTitle: string): SportCategory {
-  const catLower = (rawCategory || "").toLowerCase().trim();
-  const combined = `${rawCategory} ${rawTitle}`.toLowerCase();
+  const catLower = normalizeUnicodeText(rawCategory || "").toLowerCase().trim();
+  const combined = normalizeUnicodeText(`${rawCategory} ${rawTitle}`).toLowerCase();
 
   for (const sig of TOURNAMENT_SIGNATURES) {
     if (sig.pattern.test(combined)) {
@@ -557,6 +688,10 @@ export function detectSport(rawCategory: string, rawTitle: string): SportCategor
   if (/\b(volleyball|fivb)\b/i.test(catLower)) return "volleyball";
   if (/\b(rugby)\b/i.test(catLower)) return "rugby";
   if (/\b(golf|pga|liv golf)\b/i.test(catLower)) return "golf";
+  if (/\b(cycling|tour de france|uci)\b/i.test(catLower)) return "cycling";
+  if (/\b(snooker|billiards|pool)\b/i.test(catLower)) return "snooker";
+  if (/\b(darts|pdc)\b/i.test(catLower)) return "darts";
+  if (/\b(baseball|mlb)\b/i.test(catLower)) return "baseball";
   if (/\b(football|soccer)\b/i.test(catLower)) return "football";
   if (/\b(cricket)\b/i.test(catLower)) return "cricket";
 
@@ -568,7 +703,7 @@ export function detectSport(rawCategory: string, rawTitle: string): SportCategor
     return "cricket";
   }
   if (
-    /\b(football|soccer|premier league|laliga|la liga|serie a|bundesliga|ligue 1|ucl|champions league|europa|fa cup|isl|fifa|euro|copa|madrid|barcelona|arsenal|chelsea|liverpool|man city|man utd)\b/i.test(
+    /\b(football|soccer|premier league|laliga|la liga|serie a|bundesliga|ligue 1|ucl|champions league|europa|fa cup|efl|carabao|wsl|super league|isl|fifa|euro|copa|madrid|barcelona|arsenal|chelsea|liverpool|man city|man utd|aston villa|west ham|birmingham|charlton|everton|newcastle|tottenham|brighton|fulham|brentford|crystal palace|wolves|nottingham|leicester|southampton|ipswich|leeds|sunderland|burnley|juventus|milan|inter|napoli|roma|bayern|dortmund|leverkusen|psg|belgium|italy|france|croatia|czechia|spain|germany|portugal|netherlands|scotland|wales|poland|switzerland|denmark|sweden|norway|austria|serbia|ukraine|turkiye|turkey|greece|hungary|slovakia|slovenia|romania|bulgaria|belarus|albania|latvia|armenia|georgia|finland|iceland|\bwfc\b|\blfc\b|\bafc\b|\bfc\b|\bnfl\b|redzone|saints|panthers|colts|dolphins|packers|vikings|browns|texans|falcons|chiefs|lions|patriots|cowboys|eagles|ravens|bills|49ers|steelers|bengals|seahawks|rams|chargers|raiders|broncos|jets|giants|bears|commanders|cardinals|buccaneers|titans|jaguars)\b/i.test(
       combined
     )
   ) {
@@ -576,6 +711,9 @@ export function detectSport(rawCategory: string, rawTitle: string): SportCategor
   }
   if (/\b(f1|formula 1|formula one|motogp|nascar|indycar|rally|grand prix|racing|motorsport)\b/i.test(combined)) {
     return "motorsport";
+  }
+  if (/\b(tour de france|giro d'?italia|vuelta a espana|cycling|uci)\b/i.test(combined)) {
+    return "cycling";
   }
   if (/\b(table tennis|wtt|ittf|ping pong)\b/i.test(combined)) {
     return "table-tennis";
@@ -610,6 +748,15 @@ export function detectSport(rawCategory: string, rawTitle: string): SportCategor
   if (/\b(rugby|six nations|super rugby)\b/i.test(combined)) {
     return "rugby";
   }
+  if (/\b(snooker|crucible|world snooker)\b/i.test(combined)) {
+    return "snooker";
+  }
+  if (/\b(darts|pdc)\b/i.test(combined)) {
+    return "darts";
+  }
+  if (/\b(baseball|mlb)\b/i.test(combined)) {
+    return "baseball";
+  }
 
   return "other";
 }
@@ -618,7 +765,7 @@ export function detectSport(rawCategory: string, rawTitle: string): SportCategor
  * Resolves a raw team name into a canonical TeamInfo structure with gender, ageGroup, and leagueId metadata.
  */
 export function normalizeTeam(rawName: string): TeamInfo {
-  const cleaned = rawName
+  const cleaned = normalizeUnicodeText(rawName)
     .replace(/\[.*?\]|\(.*?\)/g, "")
     .replace(/\b(live|stream|hd|fhd|uhd|4k|1080p|720p|1st|2nd|3rd|4th|5th|odi|t20|t20i|test|match)\b/gi, "")
     .replace(/[^a-zA-Z0-9\s&-]/g, " ")
@@ -771,6 +918,109 @@ function promoteTeamToWomenIfContextMatches(team: TeamInfo, tournamentId?: strin
  *  - "Tournament Name: Team A vs Team B"
  *  - Automatic franchise-to-tournament inference (e.g., "Adelaide Strikers Women vs Sydney Sixers Women" -> WBBL)
  */
+const GENERIC_CATEGORY_TOURNAMENT_NAMES = new Set([
+  "cricket",
+  "football",
+  "soccer",
+  "boxing",
+  "mma",
+  "ufc",
+  "motorsport",
+  "motorsports",
+  "tennis",
+  "table tennis",
+  "basketball",
+  "hockey",
+  "ice hockey",
+  "wwe",
+  "wrestling",
+  "kabaddi",
+  "badminton",
+  "volleyball",
+  "rugby",
+  "golf",
+  "snooker",
+  "sports",
+  "sport",
+  "live",
+  "live events",
+  "live event",
+  "live tv",
+  "other",
+  "others",
+  "match",
+  "matches",
+  "today",
+]);
+
+export function isGenericOrNoiseTournamentName(raw?: string | null): boolean {
+  if (!raw) return true;
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || cleaned.length <= 2) return true;
+  if (GENERIC_CATEGORY_TOURNAMENT_NAMES.has(cleaned)) return true;
+  if (
+    /^(?:\d+(?:st|nd|rd|th)\s*)?(?:semi\s*final|quarter\s*final|final|eliminator|qualifier|t20i?|odi|test|day\s*\d+|live|match\s*\d*|stream|hd|fhd|uhd|today|sports?|channel\s*\d*)$/i.test(
+      cleaned
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function cleanDynamicTournamentName(raw: string): string {
+  return raw
+    .replace(
+      /\s*[|:-]\s*(?:\d+(?:st|nd|rd|th)\s*)?(?:semi[-\s]?final|quarter[-\s]?final|final|match\s*\d+|game\s*\d+|t20i?|odi|test|day\s*\d+).*$/i,
+      ""
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function buildTournamentShortName(rawName: string): string {
+  const clean = cleanDynamicTournamentName(rawName);
+  if (clean.length <= 22) return clean;
+  const words = clean.split(" ").filter(Boolean);
+  let acc = "";
+  for (const w of words) {
+    const next = acc ? `${acc} ${w}` : w;
+    if (next.length > 22) break;
+    acc = next;
+  }
+  return acc || clean.slice(0, 20).trim();
+}
+
+export function buildDynamicTournamentInfo(rawName?: string | null, category = "Sports Tournament"): TournamentInfo | null {
+  if (!rawName) return null;
+  const cleanName = cleanDynamicTournamentName(rawName);
+  if (isGenericOrNoiseTournamentName(cleanName)) return null;
+
+  for (const sig of TOURNAMENT_SIGNATURES) {
+    if (sig.pattern.test(cleanName)) {
+      return sig.info;
+    }
+  }
+
+  const slug = cleanName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 28);
+  if (!slug || GENERIC_CATEGORY_TOURNAMENT_NAMES.has(slug.replace(/_/g, " "))) return null;
+
+  return {
+    id: `tourn_${slug}`,
+    name: cleanName,
+    shortName: buildTournamentShortName(cleanName),
+    category,
+  };
+}
+
 export function parseEventEntities(rawTitle: string, rawCompetition?: string): ParsedEventEntities {
   const trimmed = rawTitle.replace(/\s+/g, " ").trim();
   const matchNumberTag = extractMatchNumberTag(trimmed);
@@ -796,45 +1046,28 @@ export function parseEventEntities(rawTitle: string, rawCompetition?: string): P
 
     if (vsCheck.test(inside) && !vsCheck.test(outside)) {
       candidateVsText = inside;
-      if (!detectedTournament && outside.length > 2) {
-        detectedTournament = {
-          id: `tourn_${outside.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 24)}`,
-          name: outside,
-          shortName: outside.length > 16 ? outside.slice(0, 16).trim() : outside,
-          category: "Sports Tournament",
-        };
+      if (!detectedTournament) {
+        detectedTournament = buildDynamicTournamentInfo(outside);
       }
     } else if (vsCheck.test(outside) && !vsCheck.test(inside)) {
       candidateVsText = outside;
-      if (!detectedTournament && inside.length > 2) {
-        detectedTournament = {
-          id: `tourn_${inside.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 24)}`,
-          name: inside,
-          shortName: inside.length > 16 ? inside.slice(0, 16).trim() : inside,
-          category: "Sports Tournament",
-        };
+      if (!detectedTournament) {
+        detectedTournament = buildDynamicTournamentInfo(inside);
       }
     }
   }
 
-  // Also handle "Tournament: Team A vs Team B" or "Tournament - Team A vs Team B"
-  if (!bracketMatch && /[:|]/.test(candidateVsText)) {
-    const colonParts = candidateVsText.split(/[:|]/).map((s) => s.trim()).filter(Boolean);
+  // Also handle "Tournament: Team A vs Team B", "Tournament | Team A vs Team B", or "Team A vs Team B - Tournament"
+  if (!bracketMatch && (/[|:]/.test(candidateVsText) || /\s+[-–—]\s+/.test(candidateVsText))) {
+    const separatorRegex = /[|:]/g.test(candidateVsText) ? /[|:]/ : /\s+[-–—]\s+/;
+    const parts = candidateVsText.split(separatorRegex).map((s) => s.trim()).filter(Boolean);
     const vsCheck = /\b(?:vs\.?|v\/s|v)\b/i;
-    const partWithVsIdx = colonParts.findIndex((p) => vsCheck.test(p));
-    if (partWithVsIdx !== -1) {
-      const otherPart = colonParts[partWithVsIdx === 0 ? 1 : 0];
-      candidateVsText = colonParts[partWithVsIdx];
-      const isGenericPrefix = /^(?:live|match\s*\d*|stream|hd|fhd|uhd|today|sports?)$/i.test(
-        otherPart || ""
-      );
-      if (!detectedTournament && otherPart && otherPart.length > 2 && !isGenericPrefix) {
-        detectedTournament = {
-          id: `tourn_${otherPart.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 24)}`,
-          name: otherPart,
-          shortName: otherPart.length > 16 ? otherPart.slice(0, 16).trim() : otherPart,
-          category: "Sports Tournament",
-        };
+    const partWithVsIdx = parts.findIndex((p) => vsCheck.test(p));
+    if (partWithVsIdx !== -1 && parts.length >= 2) {
+      const otherParts = parts.filter((_, idx) => idx !== partWithVsIdx).join(" - ");
+      candidateVsText = parts[partWithVsIdx];
+      if (!detectedTournament && otherParts) {
+        detectedTournament = buildDynamicTournamentInfo(otherParts);
       }
     }
   }
@@ -902,15 +1135,7 @@ export function parseEventEntities(rawTitle: string, rawCompetition?: string): P
       }
 
       const finalTournament =
-        detectedTournament ||
-        (rawCompetition
-          ? {
-              id: `tourn_${rawCompetition.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 24)}`,
-              name: rawCompetition,
-              shortName: rawCompetition.slice(0, 16).trim(),
-              category: "Sports Tournament",
-            }
-          : null);
+        detectedTournament || buildDynamicTournamentInfo(rawCompetition);
 
       const matchFormat = extractMatchFormat(tournamentSearchText, finalTournament);
       const knownA = Boolean(TEAM_ALIASES[teamA.code.toLowerCase()] || TEAM_ALIASES[teamA.name.toLowerCase()]);
@@ -936,12 +1161,7 @@ export function parseEventEntities(rawTitle: string, rawCompetition?: string): P
     : trimmed.replace(/\b(\w+)\s+vs\.?\s+\1\b/i, "$1").trim();
 
   if (!detectedTournament) {
-    detectedTournament = {
-      id: `tourn_${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 24)}`,
-      name: cleanTitle,
-      shortName: cleanTitle.length > 15 ? cleanTitle.slice(0, 15).trim() : cleanTitle,
-      category: "Live Broadcast",
-    };
+    detectedTournament = buildDynamicTournamentInfo(rawCompetition || cleanTitle, "Live Broadcast");
   }
 
   return {
@@ -1338,8 +1558,9 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
   const teamPairIndex = new Map<string, string[]>();
 
   for (const ev of events) {
-    const sport = detectSport(ev.category, ev.title);
-    const parsed = parseEventEntities(ev.title, ev.competition);
+    const compHint = ev.competition || (ev as LiveEvent & { tournament?: string }).tournament || "";
+    const sport = detectSport(`${ev.category || ""} ${compHint}`.trim(), ev.title);
+    const parsed = parseEventEntities(ev.title, compHint || ev.category);
 
     // Attach upstream team flags (teamAFlag / teamBFlag) onto parsed teams
     if (parsed.kind === "match" && parsed.teams) {
@@ -1392,18 +1613,33 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
       }
     }
 
+    const hintTitles = Array.isArray(ev.formatHints)
+      ? ev.formatHints.map((h) => h.title).filter(Boolean)
+      : [];
+
     const providersInEvent = Array.from(new Set(ev.sources.map((s) => s.provider)));
     const languagesInEvent = Array.from(
-      new Set(ev.sources.map((s) => detectLanguage(`${ev.title} ${s.title || ""} ${s.quality}`).code))
+      new Set([
+        ...ev.sources.map((s) => detectLanguage(`${ev.title} ${s.title || ""} ${s.quality}`).code),
+        ...hintTitles.map((ht) => detectLanguage(`${ev.title} ${ht}`).code),
+      ])
     );
     const broadcastersInEvent = Array.from(
-      new Set(ev.sources.map((s) => detectBroadcaster(s.title || ev.title, s.streamUrl)))
+      new Set(
+        [
+          ...ev.sources.map((s) => detectBroadcaster(s.title || ev.title, s.streamUrl)),
+          ...hintTitles.map((ht) => detectBroadcaster(ht, "")),
+        ].filter((b) => b !== "Direct Sports Feed")
+      )
     );
+    if (broadcastersInEvent.length === 0) {
+      broadcastersInEvent.push("Direct Sports Feed");
+    }
 
     const mappedStatus: "live" | "upcoming" | "ended" =
       ev.status === "LIVE" ? "live" : ev.status === "ENDED" ? "ended" : "upcoming";
 
-    const hintCount = Array.isArray(ev.formatHints) ? ev.formatHints.length : 0;
+    const hintCount = hintTitles.length;
 
     if (!bucket) {
       const fixtureId = `fix_${createHash("md5").update(canonicalKey).digest("hex").slice(0, 12)}`;
@@ -1414,8 +1650,10 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
 
       const rawUrls = new Set<string>();
       for (const s of ev.sources) {
-        const dedupUrl = normalizeStreamUrlForDedup(s.streamUrl);
-        if (dedupUrl) rawUrls.add(dedupUrl);
+        if (/^https?:\/\//i.test(s.streamUrl)) {
+          const dedupUrl = normalizeStreamUrlForDedup(s.streamUrl);
+          if (dedupUrl) rawUrls.add(dedupUrl);
+        }
       }
 
       const isHotMatch = detectIsHotFixture(ev, parsed, Object.keys(pointerMap).length);
@@ -1450,7 +1688,7 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
         },
         posterUrl: ev.poster || ev.eventBanner || null,
         streamMetadata: {
-          totalWorkingFeeds: Math.max(rawUrls.size, hintCount),
+          totalWorkingFeeds: Math.max(rawUrls.size, hintCount, ev.sources.length > 0 ? 1 : 0),
           availableLanguages: languagesInEvent.length > 0 ? languagesInEvent : ["eng"],
           availableQualities: ["1080p", "720p", "480p", "360p"],
           maxResolution: "1080p FHD",
@@ -1489,17 +1727,20 @@ export function buildUnifiedCatalog(events: LiveEvent[]): NormalizedCatalogFixtu
         }
       }
 
-      // Merge unique stream URLs for accurate totalWorkingFeeds count
+      // Merge unique HTTP stream URLs for accurate totalWorkingFeeds count
       for (const s of ev.sources) {
-        const dedupUrl = normalizeStreamUrlForDedup(s.streamUrl);
-        if (dedupUrl) bucket.rawUrls.add(dedupUrl);
+        if (/^https?:\/\//i.test(s.streamUrl)) {
+          const dedupUrl = normalizeStreamUrlForDedup(s.streamUrl);
+          if (dedupUrl) bucket.rawUrls.add(dedupUrl);
+        }
       }
       if (hintCount > bucket.maxFormatHintCount) {
         bucket.maxFormatHintCount = hintCount;
       }
       existing.streamMetadata.totalWorkingFeeds = Math.max(
         bucket.rawUrls.size,
-        bucket.maxFormatHintCount
+        bucket.maxFormatHintCount,
+        bucket.rawUrls.size === 0 ? Object.keys(existing.providerPointers).length : 1
       );
 
       // Merge team logos if missing on existing fixture
@@ -1667,7 +1908,10 @@ export function buildRichStreamFeeds(
       !parsedPipe.cleanUrl ||
       parsedPipe.cleanUrl.startsWith("playztv://") ||
       parsedPipe.cleanUrl.startsWith("livxow://") ||
-      parsedPipe.cleanUrl.startsWith("sktech://")
+      parsedPipe.cleanUrl.startsWith("sktech://") ||
+      parsedPipe.cleanUrl.startsWith("sportzx://") ||
+      parsedPipe.cleanUrl.startsWith("playfy://") ||
+      parsedPipe.cleanUrl.startsWith("cricify://")
     ) {
       continue;
     }
@@ -1746,6 +1990,10 @@ export function buildRichStreamFeeds(
     const streamHash = createHash("sha256").update(rawUrl).digest("hex").slice(0, 12);
     const hasHeaders = Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined;
     const headerQuery = buildProxyHeaderQuery(hasHeaders);
+    const requiresClearKeyDrm = Boolean(
+      mergedDrm && mergedDrm.clearKeys && mergedDrm.clearKeys.length > 0
+    );
+    const requiresCustomHeaders = Boolean(hasHeaders);
 
     feeds.push({
       streamId: `str_${streamHash}`,
@@ -1779,6 +2027,21 @@ export function buildRichStreamFeeds(
       },
       hasPreParsedRenditions: true,
       renditions: buildPreParsedRenditions(rawUrl, protocol, proxyBaseUrl, hasHeaders),
+      playbackCompatibility: {
+        webHlsJs: protocol === "hls" && !requiresClearKeyDrm,
+        webShakaDash: protocol === "dash",
+        safariNativeHls: protocol === "hls" && !requiresClearKeyDrm,
+        androidExoPlayer: true,
+        iptvVlcKodi: true,
+        requiresClearKeyDrm,
+        requiresCustomHeaders,
+        recommendedPlayer:
+          protocol === "dash"
+            ? "shaka-player"
+            : requiresCustomHeaders
+              ? "hls.js"
+              : "hls.js",
+      },
     });
 
     index++;

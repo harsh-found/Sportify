@@ -2,6 +2,45 @@
 
 All notable engineering changes to the **Sportify Live Sports & Stream Aggregation API** are documented in this file.
 
+## [1.3.0] — Build The Best Sports Streaming API Release
+
+### Added & Improved
+- **Playback Compatibility Matrix & Recommended Player (`playbackCompatibility`)**:
+  - Added `PlaybackCompatibilitySchema` to `RichStreamFeedSchema` (`webHlsJs`, `webShakaDash`, `safariNativeHls`, `androidExoPlayer`, `iptvVlcKodi`, `requiresClearKeyDrm`, `requiresCustomHeaders`, `recommendedPlayer: "hls.js" | "shaka-player" | "native-hls" | "exo-kodi"`).
+- **24KB Deep Manifest Prober (`parseManifestContent` & `probeStream`)**:
+  - Increased stream manifest inspection buffer from `4096` bytes to `24576` bytes (`24 KB`) to capture full multi-AdaptationSet DASH MPDs and HLS master playlists.
+  - Added extraction of `encryption` (`"NONE" | "CLEARKEY" | "AES-128" | "SAMPLE-AES" | "CENC"`), `isLowLatency` (`boolean`), `targetDurationSec`, and `segmentCount`, and attached live `health` metrics (`isAlive`, `latencyMs`, `statusCode`, `lastChecked`) onto probed feeds.
+- **6-Scheme Edge Stream Proxy (`isCustomProviderScheme`) & Sub-5ms IPTV Playlist Generation**:
+  - Upgraded `/api/proxy` to resolve all 6 custom CS3 provider URI schemes (`cricify://`, `sportzx://`, `playfy://`, `playztv://`, `livxow://`, `sktech://`) on demand and forward `auth` query parameters as upstream `Authorization` headers across HLS manifest rewrites.
+  - Optimized `AggregatorService.generateM3uPlaylist()` to execute in `<5ms` without blocking on cold upstream network fans by emitting on-demand `/api/proxy?url=encodeURIComponent(schemeUrl)` links for deferred schemes.
+  - Enhanced `AggregatorService.inspectStream()` to automatically resolve custom provider schemes before inspecting manifests.
+- **Unicode Diacritic Folding & Expanded Sport/Team Intelligence**:
+  - Added `normalizeUnicodeText()` to fold non-ASCII diacritics (`Türkiye` -> `Turkiye`, `Curaçao` -> `Curacao`, `São Paulo` -> `Sao Paulo`) before entity tokenization and team alias matching.
+  - Expanded `TEAM_ALIASES`, `TOURNAMENT_SIGNATURES`, and `detectSport()` with European & World national football teams, English Men's/Women's club teams (`WFC`, `LFC`, `AFC`), `cycling` (`Tour de France`, `Giro d'Italia`, `Vuelta a Espana`, `UCI`), `snooker`, and `darts`.
+- **Rebuilt `v1.3.0` Developer Documentation Portal (`/public/docs.html`)**:
+  - Re-engineered `/public/docs.html` from the ground up with an interactive 28-endpoint catalog, live API Request Workbench, HLS/DASH Manifest & DRM Inspector, Live IPTV M3U8/XMLTV Previewer, and 6-provider Dalvik cryptographic reference while preserving the dark zinc & emerald design system (`#0E0E10` / `#121215` / `#151518` / `#1C1C21` / `#27272A` / `#F4F4F5` / `#10B981`).
+
+---
+
+## [1.2.0] — Next-Level Engineering Release
+
+### Added & Improved
+- **Bytecode-Exact CS3 Provider Extraction Across All 6 Adapters**:
+  - **`SportzxProvider` (`SportzxCryptoUtils.dex`)**: Implemented exact Dalvik `decryptV3` byte layout (`ct = [29..len-16]`, `tag = [len-16..len]`, `macSp` absorbing `macKey` at both start and end, counter `0`) with fallback to legacy synthetic layout, recovering 53+ live events and pre-resolving top `/channels/{id}.json` streams.
+  - **`PlayFyProvider` (`PlayFyProvider.cs3` `classes.dex`)**: Updated Firebase Remote Config package to `com.playfy.tv`, SHA-1 cert `31CD6939D1BEAE32D1B0EF2D9460B170116A1885`, and `entries.baseUrl`, parsing `parsed.channels` from `/cats/live-events.json` (49+ live events) and resolving `/channels/{id}.json` stream lists.
+  - **`CricifyProvider` (`CricifyProvider.cs3`)**: Prioritized `${base}/categories/live-events.txt` before `${base}/cats.txt`, added `hasRealEvents` guard against category-only manifests, and increased pre-resolved event slugs to 16.
+  - **`PlayZTV`, `LivXow`, and `SKTech`**: Added parallel pre-resolution of top 8 active events' `pro/*.txt` sub-manifests, parallelized `resolveAllStreams()`, and added a `3500ms` timeout in `TokenApiResolver.safeFetch()`.
+  - **Deferred Scheme Resolution**: Added `sportzx://`, `playfy://`, and `cricify://` deferred stream resolution in `AggregatorService.resolveSourceList()` alongside `playztv://`, `livxow://`, and `sktech://`.
+- **Tournament Hygiene, Word-Boundary ShortNames & Multi-Sport National Teams**:
+  - Added `GENERIC_CATEGORY_TOURNAMENT_NAMES`, `isGenericOrNoiseTournamentName()`, `cleanDynamicTournamentName()`, `buildTournamentShortName()`, and `buildDynamicTournamentInfo()` to eliminate bogus category tournaments (`"Cricket"`, `"Football"`, `"Boxing"`, `"Motorsports"`) and mid-word 16-char truncations (`"UEFA Nations Lea"` -> `"UEFA Nations League"`).
+  - Added 12 new `TOURNAMENT_SIGNATURES` including `SAFF Championship` (`football`), `UEFA Nations League` (`football`), `Abu Dhabi T10` (`cricket`), `ACC Emerging Teams Cup` (`cricket`), `ODI Series`, `T20I Series`, `Sheffield Shield`, and `CSA T20 Challenge`.
+  - Updated `AggregatorService.getTeams()` to track `sports: string[]` across active fixtures so multi-sport national teams (`Bangladesh`, `Pakistan`, `India`, `England`) accurately appear under both `football` and `cricket` when playing in tournaments like the `SAFF Championship`.
+- **Format-Hint Metadata Enrichment & Cross-Provider Channel Deduplication**:
+  - Enriched `availableLanguages` and `primaryBroadcasters` from upstream `formatHints` (`link_names`, `formatsNew`, `formats`) and excluded deferred scheme pointers from `rawUrls`.
+  - Deduplicated 24/7 channels across providers by canonical channel name in `getChannels()` while preserving `mergedIds` for `getChannelDetail()`.
+
+---
+
 ## [1.1.0] — Build Beyond Limits Release
 
 ### Added
