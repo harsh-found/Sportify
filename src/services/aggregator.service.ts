@@ -23,6 +23,7 @@ import { PlayZTVProvider } from "../providers/playztv.provider";
 import { PlayFyProvider } from "../providers/playfy.provider";
 import { SKTechProvider } from "../providers/sktech.provider";
 import { LivXowProvider } from "../providers/livxow.provider";
+import { isSafeUpstreamUrl, parsePipeStreamUrl } from "../utils/stream-url";
 
 export interface CatalogIndex {
   byFixtureId: Map<string, NormalizedCatalogFixture>;
@@ -300,6 +301,7 @@ export class AggregatorService {
       ...p.metadata,
       circuitState: p.getCircuitState(),
       ...(PROVIDER_TECHNICAL_SPECS[p.metadata.id] || {}),
+      diagnostics: p.getDiagnostics ? p.getDiagnostics() : undefined,
     }));
   }
 
@@ -1259,6 +1261,82 @@ export class AggregatorService {
   }
 
   /**
+   * Returns deep extraction quality, entity normalization coverage, deduplication efficiency,
+   * and per-provider network/telemetry diagnostics.
+   */
+  async getDiagnostics() {
+    const [rawEvents, catalog, channels, providers] = await Promise.all([
+      this.fetchAllRawProviderEvents(),
+      this.getUnifiedCatalog(),
+      this.getChannels(),
+      this.getProvidersEnriched(),
+    ]);
+
+    const totalFixtures = catalog.length || 1;
+    const withPosters = catalog.filter((f) => Boolean(f.posterUrl)).length;
+    const withSchedule = catalog.filter((f) => Boolean(f.schedule.startTimeUtc)).length;
+    const withTournament = catalog.filter((f) => Boolean(f.tournament)).length;
+    const multiProvider = catalog.filter(
+      (f) => Object.keys(f.providerPointers).length > 1
+    ).length;
+
+    const headToHead = catalog.filter((f) => f.kind === "match" && f.teams);
+    const headToHeadTotal = headToHead.length || 1;
+    const withTeamLogos = headToHead.filter(
+      (f) => Boolean(f.teams?.teamA.logo || f.teams?.teamB.logo)
+    ).length;
+
+    const avgConfidence =
+      catalog.length > 0
+        ? Math.round(
+            (catalog.reduce((sum, f) => sum + (f.eventConfidence ?? 0.9), 0) /
+              catalog.length) *
+              1000
+          ) / 1000
+        : 0.95;
+
+    const pct = (num: number, den: number) =>
+      Math.round((num / Math.max(1, den)) * 1000) / 10;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      extractionCoverage: {
+        totalFixtures: catalog.length,
+        posterCoveragePct: pct(withPosters, totalFixtures),
+        scheduleCoveragePct: pct(withSchedule, totalFixtures),
+        scheduleTimestampCoveragePct: pct(withSchedule, totalFixtures),
+        tournamentCoveragePct: pct(withTournament, totalFixtures),
+        tournamentInferencePct: pct(withTournament, totalFixtures),
+        teamLogoCoveragePct: pct(withTeamLogos, headToHeadTotal),
+        teamEntityResolutionPct: pct(headToHead.length, totalFixtures),
+        multiProviderMergeRatePct: pct(multiProvider, totalFixtures),
+        multiProviderConsensusPct: pct(multiProvider, totalFixtures),
+      },
+      deduplicationEfficiency: {
+        rawEventsIngested: rawEvents.length,
+        canonicalFixturesProduced: catalog.length,
+        duplicatesEliminated: Math.max(0, rawEvents.length - catalog.length),
+        deduplicationRatio:
+          catalog.length > 0
+            ? Math.round((rawEvents.length / catalog.length) * 100) / 100
+            : 1,
+        averageEventConfidence: avgConfidence,
+        totalChannelsDeduplicated: channels.length,
+      },
+      providerDiagnostics: providers.map((p) => ({
+        id: p.id,
+        name: p.name,
+        circuitState: p.circuitState,
+        trustScore: (p as any).trustScore || PROVIDER_TRUST_RANK[p.id]?.score || 85,
+        stats: p.stats,
+        diagnostics: (p as any).diagnostics || null,
+        telemetry: (p as any).diagnostics || null,
+      })),
+      caches: this.getCacheStats(),
+    };
+  }
+
+  /**
    * Resolves all custom provider scheme URLs (`playztv://`, `livxow://`, `sktech://`, `sportzx://`, `playfy://`, `cricify://`) into real HTTP manifests
    */
   private async resolveSourceList(sources: StreamSource[]): Promise<StreamSource[]> {
@@ -1482,7 +1560,7 @@ export class AggregatorService {
 
         const lines: string[] = [
           '#EXTM3U url-tvg="" x-tvg-url=""',
-          "#PLAYLIST:Sportify Live Sports & Streams Gateway v1.3.0",
+          "#PLAYLIST:Sportify Live Sports & Streams Gateway v1.4.0",
         ];
 
         const activeFixtures = catalog.slice(0, 80);
@@ -1799,7 +1877,7 @@ export class AggregatorService {
     const lines: string[] = [
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<!DOCTYPE tv SYSTEM "xmltv.dtd">',
-      '<tv generator-info-name="Sportify EPG Engine v1.3.0" generator-info-url="https://sportify.api">',
+      '<tv generator-info-name="Sportify EPG Engine v1.4.0" generator-info-url="https://sportify.api">',
     ];
 
     for (const fix of catalog) {
@@ -1894,16 +1972,28 @@ export class AggregatorService {
    * Automatically resolves custom provider schemes (`playztv://`, `sportzx://`, etc.) before probing.
    */
   async inspectStream(url: string, headers?: Record<string, string>): Promise<ProbeResult> {
-    if (/^(?:playztv|livxow|sktech|sportzx|playfy|cricify):\/\//i.test(url)) {
-      const resolved = await this.resolveCustomUri(url);
+    let targetUrl = url.trim();
+    let mergedHeaders = { ...(headers || {}) };
+
+    if (/^(?:playztv|livxow|sktech|sportzx|playfy|cricify):\/\//i.test(targetUrl)) {
+      const resolved = await this.resolveCustomUri(targetUrl);
       if (resolved) {
-        return streamProber.inspectManifest(resolved.streamUrl, {
+        targetUrl = resolved.streamUrl;
+        mergedHeaders = {
           ...(resolved.headers || {}),
-          ...(headers || {}),
-        });
+          ...mergedHeaders,
+        };
       }
     }
-    return streamProber.inspectManifest(url, headers);
+
+    const parsedPipe = parsePipeStreamUrl(targetUrl, mergedHeaders);
+    const cleanUrl = parsedPipe.cleanUrl || targetUrl;
+
+    if (!isSafeUpstreamUrl(cleanUrl)) {
+      throw new Error("Blocked unsafe or private upstream URL");
+    }
+
+    return streamProber.inspectManifest(cleanUrl, parsedPipe.headers);
   }
 
   /**

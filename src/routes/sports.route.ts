@@ -9,7 +9,7 @@ sportsRoute.get("/", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.3.0",
+    version: "1.4.0",
     totalSports: sports.length,
     sports,
     timestamp: new Date().toISOString(),
@@ -23,7 +23,7 @@ sportsRoute.get("/:sport", async (c) => {
 
   return c.json({
     success: true,
-    version: "1.3.0",
+    version: "1.4.0",
     ...detail,
     timestamp: new Date().toISOString(),
   });

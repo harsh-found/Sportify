@@ -255,11 +255,15 @@ export class SKTechProvider extends AbstractBaseProvider {
     throw new DecryptionError(this.metadata.id, "SKTech-MultiPass-AES");
   }
 
-  private async fetchWithDomainFailover(path: string, isSubResource = false): Promise<string> {
+  private async fetchWithDomainFailover(
+    pathOrPaths: string | string[],
+    isSubResource = false
+  ): Promise<string> {
     if (!isSubResource) {
       this.checkCircuitBreaker();
     }
 
+    const candidatePaths = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
     const primaryBase = await this.getBaseUrl();
     const bases = isSubResource
       ? [primaryBase]
@@ -267,24 +271,27 @@ export class SKTechProvider extends AbstractBaseProvider {
 
     let lastErr: unknown;
     for (const base of bases) {
-      try {
-        const res = await this.safeFetch(`${base}/${path.replace(/^\//, "")}`, {
-          ignoreCircuitBreaker: true,
-        });
-        const encText = await res.text();
-        const decrypted = this.decryptPayload(encText);
-        this.cachedBaseUrl = base;
-        this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
-        if (!isSubResource) {
-          this.recordSuccess();
+      for (const p of candidatePaths) {
+        try {
+          const res = await this.safeFetch(`${base}/${p.replace(/^\//, "")}`, {
+            ignoreCircuitBreaker: true,
+          });
+          const encText = await res.text();
+          const decrypted = this.decryptPayload(encText);
+          this.cachedBaseUrl = base;
+          this.activeBaseUrl = base;
+          this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
+          if (!isSubResource) {
+            this.recordSuccess();
+          }
+          return decrypted;
+        } catch (err) {
+          lastErr = err;
         }
-        return decrypted;
-      } catch (err) {
-        lastErr = err;
       }
     }
     if (!isSubResource) {
-      this.recordFailure();
+      this.recordFailure(lastErr instanceof Error ? lastErr.message : "SKTech domain failover exhausted");
     }
     throw lastErr || new Error("SKTech domain failover exhausted");
   }
@@ -393,11 +400,15 @@ export class SKTechProvider extends AbstractBaseProvider {
           poster = teamAFlag;
         }
 
+        const startIso = this.parseProviderDateTime(ev.date, ev.time);
+        const endIso = this.parseProviderDateTime(ev.end_date, ev.end_time);
+        const status = this.computeEventStatusFromTimes(startIso, endIso);
+
         const eventObj: LiveEvent = {
           id: eventId,
           title: fullTitle,
           category: ev.category || ev.cat || "Sports",
-          status: "LIVE",
+          status,
           poster,
           teamAFlag,
           teamBFlag,
@@ -406,8 +417,8 @@ export class SKTechProvider extends AbstractBaseProvider {
           isHot,
           priority,
           formatHints: formatHints.length > 0 ? formatHints : undefined,
-          startTime: ev.date && ev.time ? `${ev.date} ${ev.time}` : undefined,
-          endTime: ev.end_date && ev.end_time ? `${ev.end_date} ${ev.end_time}` : undefined,
+          startTime: startIso,
+          endTime: endIso,
           competition: eventName || undefined,
           lastUpdated: new Date().toISOString(),
           sources: [source],
@@ -431,6 +442,7 @@ export class SKTechProvider extends AbstractBaseProvider {
         );
       }
 
+      this.lastEventsExtracted = liveEvents.length;
       return liveEvents;
     } catch (error) {
       this.logError("Failed to fetch events from SKTech", error);
@@ -440,12 +452,7 @@ export class SKTechProvider extends AbstractBaseProvider {
 
   async fetchChannels(): Promise<Channel[]> {
     try {
-      let decText: string;
-      try {
-        decText = await this.fetchWithDomainFailover("categories.txt");
-      } catch {
-        decText = await this.fetchWithDomainFailover("cats.txt");
-      }
+      const decText = await this.fetchWithDomainFailover(["categories.txt", "cats.txt"]);
 
       const rawList = JSON.parse(decText);
       if (!Array.isArray(rawList)) {
@@ -488,6 +495,7 @@ export class SKTechProvider extends AbstractBaseProvider {
         });
       }
 
+      this.lastChannelsExtracted = channels.length;
       return channels;
     } catch (error) {
       this.logError("Failed to fetch channels from SKTech", error);

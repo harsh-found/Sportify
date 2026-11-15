@@ -23,13 +23,41 @@ import {
   searchResourceRoute,
   statsResourceRoute,
   scheduleResourceRoute,
+  diagnosticsResourceRoute,
 } from "./routes/v1-resources.route";
 import { aggregatorService } from "./services/aggregator.service";
 
 const app = new Hono();
 
-// Enable CORS for all clients (Web players, mobile apps)
-app.use("*", cors());
+// Enable CORS for all clients (Web players, mobile apps, Shaka/hls.js range requests)
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowMethods: ["GET", "HEAD", "POST", "OPTIONS"],
+    allowHeaders: [
+      "Range",
+      "Accept",
+      "Origin",
+      "Referer",
+      "Authorization",
+      "Content-Type",
+      "If-None-Match",
+    ],
+    exposeHeaders: [
+      "Content-Length",
+      "Content-Range",
+      "Accept-Ranges",
+      "ETag",
+      "X-Cache",
+      "X-Response-Time",
+      "X-Request-Id",
+      "X-API-Version",
+      "X-Proxy-Active-Upstream",
+    ],
+    maxAge: 86400,
+  })
+);
 
 // High-performance payload compression (Gzip/Deflate) excluding real-time SSE stream
 app.use("*", async (c, next) => {
@@ -42,7 +70,7 @@ app.use("*", async (c, next) => {
   const start = performance.now();
   const requestId = crypto.randomUUID();
   c.header("X-Request-Id", requestId);
-  c.header("X-API-Version", "1.3.0");
+  c.header("X-API-Version", "1.4.0");
 
   // Support conditional ETag / If-None-Match on catalog & matches GET endpoints
   if (
@@ -100,7 +128,7 @@ app.get("/", async (c) => {
   }
   return c.json({
     service: "Sportify Live Sports Gateway",
-    version: "1.3.0",
+    version: "1.4.0",
     architecture: "Edge-Federated Multi-Provider Engine",
     status: "healthy",
     providersIntegrated: 6,
@@ -133,6 +161,7 @@ app.get("/", async (c) => {
       streamInspect: "/api/streams/inspect?url=<manifest_url>",
       search: "/api/search?q=<query>",
       stats: "/api/stats",
+      diagnostics: "/api/diagnostics",
       streamProxy: "/api/proxy?url=<target_m3u8_url>",
       iptvPlaylist: "/api/playlist.m3u",
       liveSse: "/api/live/sse",
@@ -167,7 +196,7 @@ app.get("/logos/:file", async (c) => {
 app.get("/health", (c) => {
   return c.json({
     service: "Sportify Live Sports Gateway",
-    version: "1.3.0",
+    version: "1.4.0",
     architecture: "Edge-Federated Multi-Provider Engine",
     status: "healthy",
     providersIntegrated: 6,
@@ -200,6 +229,7 @@ app.get("/health", (c) => {
       streamInspect: "/api/streams/inspect?url=<manifest_url>",
       search: "/api/search",
       stats: "/api/stats",
+      diagnostics: "/api/diagnostics",
       streamProxy: "/api/proxy?url=<target_m3u8_url>",
       iptvPlaylist: "/api/playlist.m3u",
       liveSse: "/api/live/sse",
@@ -233,7 +263,7 @@ const handleXmltvEpg = async (c: any) => {
 app.get("/api/epg.xml", handleXmltvEpg);
 app.get("/epg.xml", handleXmltvEpg);
 
-// Sportify v1.3.0 Resource-Oriented Endpoints
+// Sportify v1.4.0 Resource-Oriented Endpoints
 app.route("/api/catalog", catalogRoute);
 app.route("/api/sports", sportsRoute);
 app.route("/api/matches", matchesResourceRoute);
@@ -250,6 +280,7 @@ app.route("/api/stream", streamProvenanceRoute);
 app.route("/api/streams", streamProvenanceRoute);
 app.route("/api/search", searchResourceRoute);
 app.route("/api/stats", statsResourceRoute);
+app.route("/api/diagnostics", diagnosticsResourceRoute);
 app.route("/api/proxy", proxyRoute);
 app.route("/api/playlist.m3u", playlistRoute);
 app.route("/api/playlist.m3u8", playlistRoute);

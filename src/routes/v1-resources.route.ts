@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { aggregatorService } from "../services/aggregator.service";
 
-const API_VERSION = "1.3.0";
+const API_VERSION = "1.4.0";
 
 export const matchesResourceRoute = new Hono();
 
@@ -497,3 +497,17 @@ scheduleResourceRoute.get("/", async (c) => {
     ...schedule,
   });
 });
+
+export const diagnosticsResourceRoute = new Hono();
+
+// GET /api/diagnostics
+diagnosticsResourceRoute.get("/", async (c) => {
+  const diagnostics = await aggregatorService.getDiagnostics();
+
+  return c.json({
+    success: true,
+    version: API_VERSION,
+    ...diagnostics,
+  });
+});
+

@@ -221,9 +221,9 @@ export class SportzxProvider extends AbstractBaseProvider {
   private dynamicUrlExpiresAt = 0;
 
   private readonly m3uMirrors = [
-    "https://raw.githubusercontent.com/Jitendra-unatti/fancode/refs/heads/main/data/fancode.m3u",
     "https://github.com/abusaeeidx/CricHd-playlists-Auto-Update-permanent/raw/main/ALL.m3u",
     "https://iptv-org.github.io/iptv/categories/sports.m3u",
+    "https://raw.githubusercontent.com/Jitendra-unatti/fancode/refs/heads/main/data/fancode.m3u",
   ];
 
   /**
@@ -479,6 +479,7 @@ export class SportzxProvider extends AbstractBaseProvider {
   }
 
   async fetchEvents(): Promise<LiveEvent[]> {
+    this.checkCircuitBreaker();
     const dynUrl = await this.fetchDynamicBaseUrl();
     const candidates = [
       ...(dynUrl ? [dynUrl] : []),
@@ -486,11 +487,12 @@ export class SportzxProvider extends AbstractBaseProvider {
     ];
 
     for (const baseUrl of candidates) {
-      const endpoints = [`${baseUrl}/events.json`, `${baseUrl}/events.txt`];
+      const endpoints = [`${baseUrl}/events.txt`, `${baseUrl}/events.json`];
       for (const endpoint of endpoints) {
         try {
           const res = await this.safeFetch(endpoint, {
             headers: { "User-Agent": "okhttp/4.12.0" },
+            ignoreCircuitBreaker: true,
           });
           const rawText = await res.text();
           const decText = this.decryptSportzx(rawText);
@@ -499,7 +501,9 @@ export class SportzxProvider extends AbstractBaseProvider {
 
           if (Array.isArray(eventsArray) && eventsArray.length > 0) {
             this.cachedDynamicBaseUrl = baseUrl;
+            this.activeBaseUrl = baseUrl;
             this.dynamicUrlExpiresAt = Date.now() + 1800 * 1000;
+            this.recordSuccess();
 
             const liveEvents: LiveEvent[] = [];
             const pendingChannelLookups: Array<{
@@ -705,7 +709,10 @@ export class SportzxProvider extends AbstractBaseProvider {
               );
             }
 
-            if (liveEvents.length > 0) return liveEvents;
+            if (liveEvents.length > 0) {
+              this.lastEventsExtracted = liveEvents.length;
+              return liveEvents;
+            }
           }
         } catch {
           // Try next endpoint / baseUrl
@@ -714,24 +721,29 @@ export class SportzxProvider extends AbstractBaseProvider {
     }
 
     const channels = await this.fetchChannels();
-    return channels
+    const fallbackEvents = channels
       .filter((ch) => /\b(vs\.?|v\/s|live|match|t20|odi|test|ufc|f1|motogp|premier league)\b/i.test(ch.name))
       .slice(0, 20)
       .map((ch, idx) => ({
         id: `sportzx_ev_${idx}_${Buffer.from(ch.name).toString("hex").slice(0, 6)}`,
         title: ch.name,
         category: ch.category,
-        status: "LIVE",
+        status: "LIVE" as const,
         poster: ch.logo,
         lastUpdated: new Date().toISOString(),
         sources: ch.sources,
       }));
+    this.lastEventsExtracted = fallbackEvents.length;
+    return fallbackEvents;
   }
 
   async fetchChannels(): Promise<Channel[]> {
     for (const mirror of this.m3uMirrors) {
       try {
-        const res = await this.safeFetch(mirror);
+        const res = await this.safeFetch(mirror, {
+          ignoreCircuitBreaker: true,
+          timeoutMs: 4000,
+        });
         const text = await res.text();
         const items = parseM3UPlaylist(text);
 
@@ -758,7 +770,7 @@ export class SportzxProvider extends AbstractBaseProvider {
           .slice(0, 60);
 
         if (sportsItems.length > 0) {
-          return sportsItems.map((item, idx) => {
+          const channels = sportsItems.map((item, idx) => {
             const source: StreamSource = {
               id: `sportzx_src_${idx}`,
               provider: this.metadata.id,
@@ -781,6 +793,8 @@ export class SportzxProvider extends AbstractBaseProvider {
               sources: [source],
             };
           });
+          this.lastChannelsExtracted = channels.length;
+          return channels;
         }
       } catch (err) {
         this.logWarn(`Mirror failed (${mirror}): ${(err as Error).message}`);

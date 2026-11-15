@@ -16,7 +16,7 @@ export class LivXowProvider extends AbstractBaseProvider {
   readonly metadata: ProviderMetadata = {
     id: "livxow",
     name: "LivXow Live",
-    version: "1.3.0",
+    version: "1.4.0",
     enabled: true,
     categories: ["Cricket", "Football", "Sports", "Live TV"],
   };
@@ -114,11 +114,15 @@ export class LivXowProvider extends AbstractBaseProvider {
     }
   }
 
-  private async fetchWithDomainFailover(path: string, isSubResource = false): Promise<string> {
+  private async fetchWithDomainFailover(
+    pathOrPaths: string | string[],
+    isSubResource = false
+  ): Promise<string> {
     if (!isSubResource) {
       this.checkCircuitBreaker();
     }
 
+    const candidatePaths = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
     const primaryBase = await this.getBaseUrl();
     const bases = isSubResource
       ? [primaryBase]
@@ -126,24 +130,27 @@ export class LivXowProvider extends AbstractBaseProvider {
 
     let lastErr: unknown;
     for (const base of bases) {
-      try {
-        const res = await this.safeFetch(`${base}/${path.replace(/^\//, "")}`, {
-          ignoreCircuitBreaker: true,
-        });
-        const encText = await res.text();
-        const decrypted = this.decryptLivXow(encText);
-        this.cachedBaseUrl = base;
-        this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
-        if (!isSubResource) {
-          this.recordSuccess();
+      for (const p of candidatePaths) {
+        try {
+          const res = await this.safeFetch(`${base}/${p.replace(/^\//, "")}`, {
+            ignoreCircuitBreaker: true,
+          });
+          const encText = await res.text();
+          const decrypted = this.decryptLivXow(encText);
+          this.cachedBaseUrl = base;
+          this.activeBaseUrl = base;
+          this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
+          if (!isSubResource) {
+            this.recordSuccess();
+          }
+          return decrypted;
+        } catch (err) {
+          lastErr = err;
         }
-        return decrypted;
-      } catch (err) {
-        lastErr = err;
       }
     }
     if (!isSubResource) {
-      this.recordFailure();
+      this.recordFailure(lastErr instanceof Error ? lastErr.message : "LivXow domain failover exhausted");
     }
     throw lastErr || new Error("LivXow domain failover exhausted");
   }
@@ -252,11 +259,15 @@ export class LivXowProvider extends AbstractBaseProvider {
           poster = teamAFlag;
         }
 
+        const startIso = this.parseProviderDateTime(ev.date, ev.time);
+        const endIso = this.parseProviderDateTime(ev.end_date, ev.end_time);
+        const status = this.computeEventStatusFromTimes(startIso, endIso);
+
         const eventObj: LiveEvent = {
           id: eventId,
           title: fullTitle,
           category: ev.category || ev.cat || "Sports",
-          status: "LIVE",
+          status,
           poster,
           teamAFlag,
           teamBFlag,
@@ -265,8 +276,8 @@ export class LivXowProvider extends AbstractBaseProvider {
           isHot,
           priority,
           formatHints: formatHints.length > 0 ? formatHints : undefined,
-          startTime: ev.date && ev.time ? `${ev.date} ${ev.time}` : undefined,
-          endTime: ev.end_date && ev.end_time ? `${ev.end_date} ${ev.end_time}` : undefined,
+          startTime: startIso,
+          endTime: endIso,
           competition: eventName || undefined,
           lastUpdated: new Date().toISOString(),
           sources: [source],
@@ -290,6 +301,7 @@ export class LivXowProvider extends AbstractBaseProvider {
         );
       }
 
+      this.lastEventsExtracted = liveEvents.length;
       return liveEvents;
     } catch (error) {
       this.logError("Failed to fetch events from LivXow", error);
@@ -299,12 +311,7 @@ export class LivXowProvider extends AbstractBaseProvider {
 
   async fetchChannels(): Promise<Channel[]> {
     try {
-      let decText: string;
-      try {
-        decText = await this.fetchWithDomainFailover("categories.txt");
-      } catch {
-        decText = await this.fetchWithDomainFailover("cats.txt");
-      }
+      const decText = await this.fetchWithDomainFailover(["categories.txt", "cats.txt"]);
 
       const rawList = JSON.parse(decText);
       if (!Array.isArray(rawList)) {
@@ -347,6 +354,7 @@ export class LivXowProvider extends AbstractBaseProvider {
         });
       }
 
+      this.lastChannelsExtracted = channels.length;
       return channels;
     } catch (error) {
       this.logError("Failed to fetch channels from LivXow", error);

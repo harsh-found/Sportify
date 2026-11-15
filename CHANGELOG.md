@@ -2,6 +2,23 @@
 
 All notable engineering changes to the **Sportify Live Sports & Stream Aggregation API** are documented in this file.
 
+## [1.4.0] — Engineer Beyond The Current Limits Release
+
+### Added & Improved
+- **Zero Self-Sabotage CS3 Provider Extraction & Singleflight Firebase Remote Config**:
+  - Eliminated circuit-breaker self-sabotage across `Cricify`, `Sportzx`, `PlayZTV`, `PlayFy`, `SKTech`, and `LivXow` by passing `{ ignoreCircuitBreaker: true }` when probing candidate sub-paths (`categories.txt` vs `cats.txt`, `/events.txt` vs `/events.json`, and M3U mirrors) so missing optional paths never trip the domain circuit breaker.
+  - Added singleflight request coalescing (`firebaseInFlight`) and 10-minute TTL caching (`firebaseConfigCache`) in `AbstractBaseProvider.fetchFirebaseRemoteConfig()` to eliminate duplicate Firebase Remote Config requests during concurrent `fetchEvents()` and `fetchChannels()` calls.
+  - Added `parseProviderDateTime()` and `computeEventStatusFromTimes()` on `AbstractBaseProvider` and upgraded `safeIsoDate()` to parse `DD/MM/YYYY HH:mm:ss`, `YYYY/MM/DD HH:mm:ss Z`, and 10/13-digit Unix epoch timestamps into ISO-8601 UTC timestamps across `PlayZTV`, `LivXow`, `SKTech`, `Sportzx`, and `Cricify`.
+- **Deep Extraction & Provider Telemetry (`GET /api/diagnostics` & `ProviderDiagnostics`)**:
+  - Added `getDiagnostics()` to `IProvider` and `AbstractBaseProvider` tracking `totalRequests`, `successfulRequests`, `failedRequests`, `successRatePct`, `lastFetchLatencyMs`, `lastSuccessAt`, `lastErrorAt`, `lastErrorMessage`, `lastEventsExtracted`, `lastChannelsExtracted`, and `activeBaseUrl`.
+  - Added `GET /api/diagnostics` endpoint exposing real-time `extractionCoverage` (`scheduleTimestampCoveragePct`, `teamEntityResolutionPct`, `tournamentInferencePct`, `posterCoveragePct`, `multiProviderConsensusPct`), `deduplicationEfficiency`, and `providerDiagnostics`.
+- **Edge Stream Proxy SSRF Hardening, Signed CDN Token Inheritance & Credential Redaction**:
+  - Added `isSafeUpstreamUrl()` blocking loopback (`localhost`, `127.0.0.0/8`, `::1`), RFC1918 private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), CGNAT, and cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`) in `/api/proxy` and `/api/streams/inspect`.
+  - Added `inheritSignedQueryParams()` to automatically inherit parent manifest CDN authentication query parameters (`hdnts`, `hdnea`, `token`, `sig`, `hmac`, `Policy`, `Signature`, `Key-Pair-Id`, `expires`, `wmsAuthSign`) onto same-host relative child playlists, encryption keys, and media segments in `/api/proxy`.
+  - Added `OPTIONS /api/proxy` CORS preflight handler (`Range`, `Access-Control-Expose-Headers`) and `sanitizeHeadersForPublicDisplay()` to redact sensitive `Authorization` and `Cookie` values in public JSON responses.
+
+---
+
 ## [1.3.0] — Build The Best Sports Streaming API Release
 
 ### Added & Improved

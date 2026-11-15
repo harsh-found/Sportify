@@ -309,6 +309,7 @@ export class PlayFyProvider extends AbstractBaseProvider {
 
         if (jsonStr.startsWith("{") || jsonStr.startsWith("[")) {
           this.cachedBaseUrl = base;
+          this.activeBaseUrl = base;
           this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
           this.recordSuccess();
 
@@ -503,7 +504,10 @@ export class PlayFyProvider extends AbstractBaseProvider {
             );
           }
 
-          if (liveEvents.length > 0) return liveEvents;
+          if (liveEvents.length > 0) {
+            this.lastEventsExtracted = liveEvents.length;
+            return liveEvents;
+          }
 
           // If /cats/live-events.json has no active events, resolve active category channels from /cc.json
           try {
@@ -536,7 +540,10 @@ export class PlayFyProvider extends AbstractBaseProvider {
                   }
                 })
               );
-              if (liveEvents.length > 0) return liveEvents;
+              if (liveEvents.length > 0) {
+                this.lastEventsExtracted = liveEvents.length;
+                return liveEvents;
+              }
             }
           } catch {
             // Fall through to M3U channels
@@ -550,7 +557,7 @@ export class PlayFyProvider extends AbstractBaseProvider {
 
     // Fallback to M3U channels that look like actual sports events
     const channels = await this.fetchChannels();
-    return channels
+    const fallbackEvents = channels
       .filter((ch) => /\b(vs\.?|v\/s|live|match|t20|odi|test|ufc|f1|motogp|premier league)\b/i.test(ch.name))
       .slice(0, 20)
       .map((ch, idx) => ({
@@ -562,18 +569,23 @@ export class PlayFyProvider extends AbstractBaseProvider {
         lastUpdated: new Date().toISOString(),
         sources: ch.sources,
       }));
+    this.lastEventsExtracted = fallbackEvents.length;
+    return fallbackEvents;
   }
 
   async fetchChannels(): Promise<Channel[]> {
     const m3uSources = [
-      "https://raw.githubusercontent.com/Jitendra-unatti/fancode/refs/heads/main/data/fancode.m3u",
       "https://github.com/abusaeeidx/CricHd-playlists-Auto-Update-permanent/raw/main/ALL.m3u",
       "https://iptv-org.github.io/iptv/countries/in.m3u",
+      "https://raw.githubusercontent.com/Jitendra-unatti/fancode/refs/heads/main/data/fancode.m3u",
     ];
 
     for (const url of m3uSources) {
       try {
-        const res = await this.safeFetch(url);
+        const res = await this.safeFetch(url, {
+          ignoreCircuitBreaker: true,
+          timeoutMs: 4000,
+        });
         const text = await res.text();
         const items = parseM3UPlaylist(text);
 
@@ -597,7 +609,7 @@ export class PlayFyProvider extends AbstractBaseProvider {
           .slice(0, 60);
 
         if (filtered.length > 0) {
-          return filtered.map((item, idx) => {
+          const channels = filtered.map((item, idx) => {
             const source: StreamSource = {
               id: `playfy_src_${idx}`,
               provider: this.metadata.id,
@@ -620,6 +632,8 @@ export class PlayFyProvider extends AbstractBaseProvider {
               sources: [source],
             };
           });
+          this.lastChannelsExtracted = channels.length;
+          return channels;
         }
       } catch {
         // Continue to next source

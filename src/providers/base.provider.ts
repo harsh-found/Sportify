@@ -73,12 +73,32 @@ export class CircuitOpenError extends ProviderError {
 
 export type CircuitState = "CLOSED" | "OPEN" | "HALF-OPEN";
 
+export interface ProviderDiagnostics {
+  providerId: string;
+  providerName: string;
+  version: string;
+  circuitState: CircuitState;
+  consecutiveFailures: number;
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  successRatePct: number;
+  lastFetchLatencyMs: number | null;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
+  lastEventsExtracted: number;
+  lastChannelsExtracted: number;
+  activeBaseUrl: string | null;
+}
+
 export interface IProvider {
   readonly metadata: ProviderMetadata;
   fetchEvents(): Promise<LiveEvent[]>;
   fetchChannels(): Promise<Channel[]>;
   resolveStream(id: string): Promise<StreamSource | null>;
   getCircuitState(): CircuitState;
+  getDiagnostics?(): ProviderDiagnostics;
 }
 
 export abstract class AbstractBaseProvider implements IProvider {
@@ -94,6 +114,28 @@ export abstract class AbstractBaseProvider implements IProvider {
   protected circuitBreakerThreshold = 3;
   protected circuitBreakerCooldownMs = 30000; // 30 seconds cooldown
 
+  // Extraction & network telemetry
+  protected totalRequests = 0;
+  protected successfulRequests = 0;
+  protected failedRequests = 0;
+  protected lastFetchLatencyMs: number | null = null;
+  protected lastSuccessAt: string | null = null;
+  protected lastErrorAt: string | null = null;
+  protected lastErrorMessage: string | null = null;
+  protected lastEventsExtracted = 0;
+  protected lastChannelsExtracted = 0;
+  protected activeBaseUrl: string | null = null;
+
+  // Shared Firebase Remote Config cache & singleflight map
+  private static firebaseConfigCache = new Map<
+    string,
+    { entries: Record<string, string> | null; expiresAt: number }
+  >();
+  private static firebaseInFlight = new Map<
+    string,
+    Promise<Record<string, string> | null>
+  >();
+
   abstract fetchEvents(): Promise<LiveEvent[]>;
   abstract fetchChannels(): Promise<Channel[]>;
   abstract resolveStream(id: string): Promise<StreamSource | null>;
@@ -108,6 +150,32 @@ export abstract class AbstractBaseProvider implements IProvider {
     return this.circuitState;
   }
 
+  public getDiagnostics(): ProviderDiagnostics {
+    const state = this.getCircuitState();
+    const successRatePct =
+      this.totalRequests > 0
+        ? Math.round((this.successfulRequests / this.totalRequests) * 1000) / 10
+        : 100;
+    return {
+      providerId: this.metadata.id,
+      providerName: this.metadata.name,
+      version: this.metadata.version || "1.4.0",
+      circuitState: state,
+      consecutiveFailures: this.consecutiveFailures,
+      totalRequests: this.totalRequests,
+      successfulRequests: this.successfulRequests,
+      failedRequests: this.failedRequests,
+      successRatePct,
+      lastFetchLatencyMs: this.lastFetchLatencyMs,
+      lastSuccessAt: this.lastSuccessAt,
+      lastErrorAt: this.lastErrorAt,
+      lastErrorMessage: this.lastErrorMessage,
+      lastEventsExtracted: this.lastEventsExtracted,
+      lastChannelsExtracted: this.lastChannelsExtracted,
+      activeBaseUrl: this.activeBaseUrl,
+    };
+  }
+
   protected checkCircuitBreaker(): void {
     const state = this.getCircuitState();
     if (state === "OPEN") {
@@ -119,15 +187,20 @@ export abstract class AbstractBaseProvider implements IProvider {
 
   protected recordSuccess(): void {
     this.consecutiveFailures = 0;
+    this.lastSuccessAt = new Date().toISOString();
     if (this.circuitState !== "CLOSED") {
       this.logInfo("Circuit breaker healed -> CLOSED");
       this.circuitState = "CLOSED";
     }
   }
 
-  protected recordFailure(): void {
+  protected recordFailure(reason?: string): void {
     this.consecutiveFailures++;
     this.lastFailureTimestamp = Date.now();
+    this.lastErrorAt = new Date().toISOString();
+    if (reason) {
+      this.lastErrorMessage = reason;
+    }
     if (this.consecutiveFailures >= this.circuitBreakerThreshold) {
       if (this.circuitState !== "OPEN") {
         this.logWarn(
@@ -136,6 +209,80 @@ export abstract class AbstractBaseProvider implements IProvider {
       }
       this.circuitState = "OPEN";
     }
+  }
+
+  /**
+   * Parses CS3 provider date (`DD/MM/YYYY` or `YYYY-MM-DD`) and time (`HH:mm:ss` or `HH:mm`)
+   * into a standardized ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:mm:ss.000Z`).
+   */
+  protected parseProviderDateTime(dateStr?: string, timeStr?: string): string | undefined {
+    const dRaw = (dateStr || "").trim();
+    const tRaw = (timeStr || "").trim();
+    if (!dRaw) return undefined;
+
+    let year = "";
+    let month = "";
+    let day = "";
+
+    const dmy = dRaw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmy) {
+      day = dmy[1].padStart(2, "0");
+      month = dmy[2].padStart(2, "0");
+      year = dmy[3];
+    } else {
+      const ymd = dRaw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+      if (ymd) {
+        year = ymd[1];
+        month = ymd[2].padStart(2, "0");
+        day = ymd[3].padStart(2, "0");
+      }
+    }
+
+    if (!year || !month || !day) {
+      return tRaw ? `${dRaw} ${tRaw}` : dRaw;
+    }
+
+    let hh = "00";
+    let mm = "00";
+    let ss = "00";
+    if (tRaw) {
+      const tm = tRaw.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+      if (tm) {
+        hh = tm[1].padStart(2, "0");
+        mm = tm[2].padStart(2, "0");
+        ss = (tm[3] || "00").padStart(2, "0");
+      }
+    }
+
+    return `${year}-${month}-${day}T${hh}:${mm}:${ss}.000Z`;
+  }
+
+  /**
+   * Determines accurate event status (`LIVE` | `UPCOMING` | `ENDED`) from start/end ISO strings,
+   * matching the CS3 `LiveEventsProvider.kt` 15-minute pre-match buffer and 4-hour default duration.
+   */
+  protected computeEventStatusFromTimes(
+    startIso?: string,
+    endIso?: string
+  ): "LIVE" | "UPCOMING" | "ENDED" {
+    if (!startIso) return "LIVE";
+    const startMs = Date.parse(startIso);
+    if (Number.isNaN(startMs) || startMs <= 0) return "LIVE";
+
+    const endMsRaw = endIso ? Date.parse(endIso) : NaN;
+    const effectiveEndMs =
+      !Number.isNaN(endMsRaw) && endMsRaw > startMs
+        ? endMsRaw
+        : startMs + 4 * 3600 * 1000;
+
+    const nowMs = Date.now();
+    if (nowMs < startMs - 15 * 60 * 1000) {
+      return "UPCOMING";
+    }
+    if (nowMs > effectiveEndMs) {
+      return "ENDED";
+    }
+    return "LIVE";
   }
 
   protected async safeFetch(
@@ -155,6 +302,9 @@ export abstract class AbstractBaseProvider implements IProvider {
       headers.set("User-Agent", this.defaultUserAgent);
     }
 
+    this.totalRequests++;
+    const startPerf = performance.now();
+
     try {
       const response = await fetch(url, {
         ...options,
@@ -162,23 +312,39 @@ export abstract class AbstractBaseProvider implements IProvider {
         signal: AbortSignal.timeout(effectiveTimeout),
       });
 
+      this.lastFetchLatencyMs = Math.round(performance.now() - startPerf);
+
       if (!response.ok) {
+        this.failedRequests++;
+        const msg = `HTTP ${response.status} for ${url}`;
         if (!ignoreCb) {
-          this.recordFailure();
+          this.recordFailure(msg);
+        } else {
+          this.lastErrorAt = new Date().toISOString();
+          this.lastErrorMessage = msg;
         }
         throw new NetworkError(this.metadata.id, url, response.status);
       }
 
+      this.successfulRequests++;
       if (!ignoreCb) {
         this.recordSuccess();
+      } else {
+        this.lastSuccessAt = new Date().toISOString();
       }
       return response;
     } catch (err) {
+      this.lastFetchLatencyMs = Math.round(performance.now() - startPerf);
       if (err instanceof ProviderError) {
         throw err;
       }
+      this.failedRequests++;
+      const msg = err instanceof Error ? err.message : String(err);
       if (!ignoreCb) {
-        this.recordFailure();
+        this.recordFailure(msg);
+      } else {
+        this.lastErrorAt = new Date().toISOString();
+        this.lastErrorMessage = msg;
       }
       throw new NetworkError(this.metadata.id, url, undefined, err);
     }
@@ -186,52 +352,84 @@ export abstract class AbstractBaseProvider implements IProvider {
 
   /**
    * Shared Firebase Remote Config fetcher reproducing the CloudStream 3 Kotlin
-   * `FirebaseRemoteConfigFetcher.kt` implementation with strict timeout protection.
+   * `FirebaseRemoteConfigFetcher.kt` implementation with singleflight deduplication and TTL cache.
    */
   protected async fetchFirebaseRemoteConfig(
     opts: FirebaseRemoteConfigOptions
   ): Promise<Record<string, string> | null> {
-    const url = `https://firebaseremoteconfig.googleapis.com/v1/projects/${opts.projectIdOrNumber}/namespaces/firebase:fetch?key=${opts.apiKey}`;
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      "X-Goog-Api-Key": opts.apiKey,
-    };
-    if (opts.packageName) {
-      headers["X-Android-Package"] = opts.packageName;
-    }
-    if (opts.certSha1) {
-      headers["X-Android-Cert"] = opts.certSha1;
+    const cacheKey = `${opts.projectIdOrNumber}:${opts.appId}`;
+    const cached = AbstractBaseProvider.firebaseConfigCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.entries;
     }
 
-    const appInstanceId = Array.from({ length: 32 }, () =>
-      Math.floor(Math.random() * 16).toString(16)
-    ).join("");
+    const existingFlight = AbstractBaseProvider.firebaseInFlight.get(cacheKey);
+    if (existingFlight) {
+      return existingFlight;
+    }
 
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          appId: opts.appId,
-          appInstanceId,
-          ...(opts.packageName ? { packageName: opts.packageName } : {}),
-          sdkVersion: "22.1.0",
-        }),
-        signal: AbortSignal.timeout(opts.timeoutMs ?? 3500),
-      });
-      if (!res.ok) return null;
-      const data = (await res.json()) as {
-        state?: string;
-        entries?: Record<string, string>;
+    const flight = (async (): Promise<Record<string, string> | null> => {
+      const url = `https://firebaseremoteconfig.googleapis.com/v1/projects/${opts.projectIdOrNumber}/namespaces/firebase:fetch?key=${opts.apiKey}`;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Goog-Api-Key": opts.apiKey,
       };
-      if (data?.entries && typeof data.entries === "object") {
-        return data.entries;
+      if (opts.packageName) {
+        headers["X-Android-Package"] = opts.packageName;
       }
-    } catch {
-      // Ignore Firebase Remote Config network timeout/errors and fall back cleanly
-    }
-    return null;
+      if (opts.certSha1) {
+        headers["X-Android-Cert"] = opts.certSha1;
+      }
+
+      const appInstanceId = Array.from({ length: 32 }, () =>
+        Math.floor(Math.random() * 16).toString(16)
+      ).join("");
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            appId: opts.appId,
+            appInstanceId,
+            ...(opts.packageName ? { packageName: opts.packageName } : {}),
+            sdkVersion: "22.1.0",
+          }),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? 3000),
+        });
+        if (!res.ok) {
+          AbstractBaseProvider.firebaseConfigCache.set(cacheKey, {
+            entries: null,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+          });
+          return null;
+        }
+        const data = (await res.json()) as {
+          state?: string;
+          entries?: Record<string, string>;
+        };
+        if (data?.entries && typeof data.entries === "object") {
+          AbstractBaseProvider.firebaseConfigCache.set(cacheKey, {
+            entries: data.entries,
+            expiresAt: Date.now() + 30 * 60 * 1000,
+          });
+          return data.entries;
+        }
+      } catch {
+        // Cache negative result briefly (2 minutes) to avoid repeated timeouts
+        AbstractBaseProvider.firebaseConfigCache.set(cacheKey, {
+          entries: null,
+          expiresAt: Date.now() + 2 * 60 * 1000,
+        });
+      }
+      return null;
+    })().finally(() => {
+      AbstractBaseProvider.firebaseInFlight.delete(cacheKey);
+    });
+
+    AbstractBaseProvider.firebaseInFlight.set(cacheKey, flight);
+    return flight;
   }
 
   /**

@@ -145,20 +145,20 @@ describe("Sportify v1.3.0 — Extraction, Normalization & Playback Intelligence"
     expect(isCustomProviderScheme("https://cdn.example.com/master.m3u8")).toBe(false);
   });
 
-  test("GET /api/openapi.json and /docs serve v1.3.0 specification and interactive portal", async () => {
+  test("GET /api/openapi.json and /docs serve v1.4.0 specification and interactive portal", async () => {
     const specRes = await app.request("/api/openapi.json");
     expect(specRes.status).toBe(200);
     const spec = (await specRes.json()) as {
       info: { version: string };
       paths: Record<string, unknown>;
     };
-    expect(spec.info.version).toBe("1.3.0");
+    expect(spec.info.version).toBe("1.4.0");
     expect(spec.paths["/api/stream/{fixtureKey}"]).toBeDefined();
 
     const docsRes = await app.request("/docs");
     expect(docsRes.status).toBe(200);
     const html = await docsRes.text();
-    expect(html.includes("v1.3.0")).toBe(true);
+    expect(html.includes("v1.4.0")).toBe(true);
     expect(html.includes("#0E0E10")).toBe(true);
     expect(html.includes("#10B981")).toBe(true);
   });

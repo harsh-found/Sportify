@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sportify API Documentation — v1.3.0 Developer Portal & Interactive Workbench</title>
-  <meta name="description" content="Official v1.3.0 Developer Documentation Portal, Architecture Reference, Playback Compatibility Guide, JSON Contracts, and Live API Workbench for the Sportify Live Sports & Stream Aggregation Platform.">
-  <meta property="og:title" content="Sportify API Documentation — v1.3.0 Developer Portal">
-  <meta property="og:description" content="Complete 29-endpoint REST reference, 6 CS3 provider cryptographic pipelines, playback compatibility matrices, and live request workbench.">
+  <title>Sportify API Documentation — v1.4.0 Developer Portal & Interactive Workbench</title>
+  <meta name="description" content="Official v1.4.0 Developer Documentation Portal, Architecture Reference, Playback Compatibility Guide, JSON Contracts, and Live API Workbench for the Sportify Live Sports & Stream Aggregation Platform.">
+  <meta property="og:title" content="Sportify API Documentation — v1.4.0 Developer Portal">
+  <meta property="og:description" content="Complete 30-endpoint REST reference, 6 CS3 provider cryptographic pipelines, playback compatibility matrices, and live request workbench.">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -90,7 +90,7 @@
         <span class="text-sm font-bold tracking-tight text-white">Sportify API</span>
       </a>
       <span class="text-[#3F3F46]">/</span>
-      <span class="font-mono text-xs text-zinc-200 bg-[#1C1C21] border border-[#27272A] px-2 py-0.5 rounded tabular-nums">v1.3.0</span>
+      <span class="font-mono text-xs text-zinc-200 bg-[#1C1C21] border border-[#27272A] px-2 py-0.5 rounded tabular-nums">v1.4.0</span>
       <span class="hidden sm:inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-400 uppercase tracking-wider ml-1">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
         <span>Edge Engine Ready</span>
@@ -104,11 +104,11 @@
         <input
           id="docs-search-input"
           type="text"
-          placeholder="Search 29 endpoints, parameters, or schemas (e.g. inspect, proxy, wbbl)..."
+          placeholder="Search 30 endpoints, parameters, or schemas (e.g. diagnostics, inspect, proxy)..."
           oninput="filterEndpoints(this.value)"
           class="w-full pl-8 pr-14 py-1.5 bg-[#151518] border border-[#27272A] rounded text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-400 transition font-sans"
         >
-        <kbd class="hidden sm:inline-block absolute right-2.5 font-mono text-[10px] text-zinc-500">v1.3</kbd>
+        <kbd class="hidden sm:inline-block absolute right-2.5 font-mono text-[10px] text-zinc-500">v1.4</kbd>
       </div>
     </div>
 
@@ -135,7 +135,7 @@
     <!-- Left Navigation Sidebar -->
     <aside class="w-full lg:w-64 shrink-0 border-b lg:border-b-0 lg:border-r border-[#27272A] bg-[#121215] lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] overflow-y-auto custom-scrollbar p-4 space-y-6">
       <div>
-        <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">v1.3.0 Architecture</div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">v1.4.0 Architecture</div>
         <nav class="space-y-1 text-xs">
           <a href="#section-overview" class="block px-2.5 py-1.5 rounded text-zinc-200 hover:bg-[#1C1C21] transition">Overview &amp; Live Telemetry</a>
           <a href="#section-pipeline" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">6-Stage Ingestion Pipeline</a>
@@ -148,7 +148,7 @@
         <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Developer Workbench</div>
         <nav class="space-y-1 text-xs">
           <a href="#section-explorer" class="block px-2.5 py-1.5 rounded text-zinc-100 font-medium bg-[#1C1C21] border border-[#27272A]">Interactive API Workbench</a>
-          <a href="#section-endpoints" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">29 REST Endpoints</a>
+          <a href="#section-endpoints" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">30 REST Endpoints</a>
           <a href="#section-schemas" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">JSON Schemas &amp; Contracts</a>
           <a href="#section-integrations" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">Player &amp; SDK Integrations</a>
           <a href="#section-swagger" class="block px-2.5 py-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-[#1C1C21] transition">OpenAPI 3.1.0 Inspector</a>
@@ -158,7 +158,7 @@
       <div>
         <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Filter by Domain</div>
         <nav class="space-y-1 text-xs font-mono">
-          <button onclick="setCategoryFilter('all')" class="w-full text-left px-2.5 py-1 rounded text-zinc-300 hover:text-white hover:bg-[#1C1C21] transition font-sans">All Endpoints (29)</button>
+          <button onclick="setCategoryFilter('all')" class="w-full text-left px-2.5 py-1 rounded text-zinc-300 hover:text-white hover:bg-[#1C1C21] transition font-sans">All Endpoints (30)</button>
           <button onclick="setCategoryFilter('matches')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/matches &amp; /api/schedule</button>
           <button onclick="setCategoryFilter('stream')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/stream &amp; /api/proxy</button>
           <button onclick="setCategoryFilter('sports')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/sports &amp; /api/catalog</button>
@@ -166,7 +166,7 @@
           <button onclick="setCategoryFilter('teams')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/teams</button>
           <button onclick="setCategoryFilter('channels')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/channels &amp; /api/broadcasters</button>
           <button onclick="setCategoryFilter('providers')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/providers</button>
-          <button onclick="setCategoryFilter('search')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/search &amp; /api/stats</button>
+          <button onclick="setCategoryFilter('search')" class="w-full text-left px-2.5 py-1 rounded text-zinc-400 hover:text-white hover:bg-[#1C1C21] transition">/api/search &amp; /api/diagnostics</button>
         </nav>
       </div>
     </aside>
@@ -177,12 +177,12 @@
       <!-- 1. System Overview & Live Telemetry -->
       <section id="section-overview" class="space-y-6 border-b border-[#27272A] pb-10">
         <div class="space-y-2.5 max-w-3xl">
-          <div class="font-mono text-xs text-zinc-400 uppercase tracking-wider">Sportify Developer Documentation &bull; Release v1.3.0</div>
+          <div class="font-mono text-xs text-zinc-400 uppercase tracking-wider">Sportify Developer Documentation &bull; Release v1.4.0</div>
           <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             High-Availability Sports Streaming &amp; Entity Intelligence API
           </h1>
           <p class="text-sm text-zinc-400 leading-relaxed">
-            Sportify <code class="font-mono text-zinc-200">v1.3.0</code> federates six reverse-engineered CloudStream3 (CS3) providers in parallel, executes native Dalvik (<code class="font-mono text-zinc-200">classes.dex</code>) decryption in memory, normalizes Unicode diacritics and franchise leagues into deterministic canonical fixtures, performs 24KB deep HLS/DASH manifest inspection (renditions, encryption, low-latency flags, ClearKey KIDs), and serves sub-millisecond O(1) indexed &amp; Stale-While-Revalidate (SWR) responses.
+            Sportify <code class="font-mono text-zinc-200">v1.4.0</code> federates six reverse-engineered CloudStream3 (CS3) providers in parallel, executes native Dalvik (<code class="font-mono text-zinc-200">classes.dex</code>) decryption in memory, normalizes Unicode diacritics and franchise leagues into deterministic canonical fixtures, performs 24KB deep HLS/DASH manifest inspection (renditions, encryption, low-latency flags, ClearKey KIDs), inherits signed CDN query tokens across rewritten playlists, and serves sub-millisecond O(1) indexed &amp; Stale-While-Revalidate (SWR) responses.
           </p>
         </div>
 
@@ -190,7 +190,7 @@
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div class="p-3.5 rounded-lg bg-[#151518] border border-[#27272A]">
             <div class="text-[11px] text-zinc-400">API Release</div>
-            <div class="text-lg font-bold text-white font-mono tabular-nums mt-1">v1.3.0</div>
+            <div class="text-lg font-bold text-white font-mono tabular-nums mt-1">v1.4.0</div>
             <div class="text-[10px] text-zinc-500 font-mono mt-0.5">OpenAPI 3.1.0</div>
           </div>
           <div class="p-3.5 rounded-lg bg-[#151518] border border-[#27272A]">
@@ -226,10 +226,11 @@
         <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div>
             <h2 class="text-lg font-bold text-white">Interactive API Workbench &amp; Code Generator</h2>
-            <p class="text-xs text-zinc-400">Execute live requests against the <code class="font-mono text-zinc-200">v1.3.0</code> gateway, inspect HTTP response headers &amp; ETag caching, and generate client code on the fly.</p>
+            <p class="text-xs text-zinc-400">Execute live requests against the <code class="font-mono text-zinc-200">v1.4.0</code> gateway, inspect HTTP response headers &amp; ETag caching, and generate client code on the fly.</p>
           </div>
           <div class="flex flex-wrap gap-1.5 font-mono text-[11px]">
             <button onclick="loadConsolePreset('/api/stats')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300 transition">/api/stats</button>
+            <button onclick="loadConsolePreset('/api/diagnostics')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300 transition">/api/diagnostics</button>
             <button onclick="loadConsolePreset('/api/matches/hot')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300 transition">/api/matches/hot</button>
             <button onclick="loadConsolePreset('/api/schedule')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300 transition">/api/schedule</button>
             <button onclick="loadConsolePreset('/api/matches?phase=live&limit=5')" class="px-2 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] border border-[#27272A] text-zinc-300 transition">/api/matches?phase=live</button>
@@ -288,7 +289,7 @@
       <section id="section-pipeline" class="space-y-4 border-b border-[#27272A] pb-10">
         <div>
           <h2 class="text-lg font-bold text-white">Six-Stage Extraction, Entity Intelligence &amp; Playback Pipeline</h2>
-          <p class="text-xs text-zinc-400">How Sportify <code class="font-mono text-zinc-200">v1.3.0</code> transforms raw encrypted CS3 payloads into low-latency, normalized sports feeds.</p>
+          <p class="text-xs text-zinc-400">How Sportify <code class="font-mono text-zinc-200">v1.4.0</code> transforms raw encrypted CS3 payloads into low-latency, normalized sports feeds.</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -364,15 +365,15 @@
       <section id="section-endpoints" class="space-y-5 border-b border-[#27272A] pb-10">
         <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
-            <h2 class="text-lg font-bold text-white">Complete v1.3.0 Endpoint Reference</h2>
+            <h2 class="text-lg font-bold text-white">Complete v1.4.0 Endpoint Reference</h2>
             <p class="text-xs text-zinc-400">Strictly typed REST endpoints with O(1) indexed filtering, HTTP ETag conditional caching, and Gzip/Deflate compression.</p>
           </div>
-          <div id="endpoints-count-label" class="font-mono text-xs text-zinc-400 tabular-nums">29 Endpoints Shown</div>
+          <div id="endpoints-count-label" class="font-mono text-xs text-zinc-400 tabular-nums">30 Endpoints Shown</div>
         </div>
 
         <!-- Category Filter Bar -->
         <div class="flex flex-wrap gap-1.5 font-mono text-xs">
-          <button data-cat="all" onclick="setCategoryFilter('all')" class="cat-pill px-2.5 py-1 rounded bg-zinc-100 text-zinc-950 font-semibold transition">All (29)</button>
+          <button data-cat="all" onclick="setCategoryFilter('all')" class="cat-pill px-2.5 py-1 rounded bg-zinc-100 text-zinc-950 font-semibold transition">All (30)</button>
           <button data-cat="matches" onclick="setCategoryFilter('matches')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Matches &amp; EPG (9)</button>
           <button data-cat="stream" onclick="setCategoryFilter('stream')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Streams &amp; Proxy (5)</button>
           <button data-cat="sports" onclick="setCategoryFilter('sports')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Sports &amp; Catalog (4)</button>
@@ -380,7 +381,7 @@
           <button data-cat="teams" onclick="setCategoryFilter('teams')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Teams (2)</button>
           <button data-cat="channels" onclick="setCategoryFilter('channels')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Channels &amp; Broadcasters (4)</button>
           <button data-cat="providers" onclick="setCategoryFilter('providers')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Providers (2)</button>
-          <button data-cat="search" onclick="setCategoryFilter('search')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Search &amp; Telemetry (3)</button>
+          <button data-cat="search" onclick="setCategoryFilter('search')" class="cat-pill px-2.5 py-1 rounded bg-[#151518] hover:bg-[#1C1C21] text-zinc-300 border border-[#27272A] transition">Search &amp; Telemetry (4)</button>
         </div>
 
         <div id="endpoints-list-container" class="space-y-2.5">
@@ -487,7 +488,7 @@
       <section id="section-schemas" class="space-y-4 border-b border-[#27272A] pb-10">
         <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div>
-            <h2 class="text-lg font-bold text-white">v1.3.0 JSON Schemas &amp; Response Contracts</h2>
+            <h2 class="text-lg font-bold text-white">v1.4.0 JSON Schemas &amp; Response Contracts</h2>
             <p class="text-xs text-zinc-400">Validated at runtime with Zod schemas in <code class="font-mono text-zinc-200">src/catalog/types.ts</code>.</p>
           </div>
           <div class="flex flex-wrap gap-1.5 font-mono text-xs">
@@ -518,7 +519,7 @@
           <div class="rounded-lg bg-[#151518] border border-[#27272A] overflow-hidden">
             <div class="px-4 py-2 bg-[#1C1C21] border-b border-[#27272A] flex items-center justify-between font-mono text-xs text-zinc-300">
               <span>1. TypeScript SDK — Resolve &amp; Auto-Select Player</span>
-              <span class="text-emerald-400">v1.3.0</span>
+              <span class="text-emerald-400">v1.4.0</span>
             </div>
             <pre class="p-4 font-mono text-xs text-zinc-300 overflow-x-auto leading-relaxed">const res = await fetch("/api/matches/live?sport=cricket");
 const { matches } = await res.json();
@@ -607,7 +608,8 @@ await player.load(feed.network.masterPlaylistUrl);</pre>
       { group: "stream", method: "GET", path: "/api/live/sse", params: "—", cache: "Streaming SSE", summary: "Real-time Server-Sent Events (SSE) stream pushing live fixture snapshots and 15-second heartbeat ticks." },
       { group: "search", method: "GET", path: "/api/search", params: "q, limit", cache: "60s SWR", summary: "Weighted tokenized & typo-tolerant cross-resource search across matches, tournaments, teams, and channels.", sample: "/api/search?q=India" },
       { group: "search", method: "GET", path: "/api/stats", params: "—", cache: "Live", summary: "Comprehensive platform statistics across sports, phases, providers, DRM coverage, SWR caches, and system memory.", sample: "/api/stats" },
-      { group: "search", method: "GET", path: "/health", params: "—", cache: "Live", summary: "Gateway health status, v1.3.0 metadata, provider circuit states, cache hit rates, and complete endpoint directory.", sample: "/health" }
+      { group: "search", method: "GET", path: "/api/diagnostics", params: "—", cache: "Live", summary: "Deep extraction diagnostics, date/entity/poster coverage percentages, deduplication efficiency, and per-provider latency/error telemetry.", sample: "/api/diagnostics" },
+      { group: "search", method: "GET", path: "/health", params: "—", cache: "Live", summary: "Gateway health status, v1.4.0 metadata, provider circuit states, cache hit rates, and complete endpoint directory.", sample: "/health" }
     ];
 
     const SCHEMA_EXAMPLES = {
@@ -725,7 +727,7 @@ await player.load(feed.network.masterPlaylistUrl);</pre>
         title: "ErrorEnvelope — Standardized REST Error Contract",
         body: {
           success: false,
-          version: "1.3.0",
+          version: "1.4.0",
           error: {
             code: "MATCH_NOT_FOUND",
             message: "No match or fixture found matching identifier 'invalid_fixture_id'"

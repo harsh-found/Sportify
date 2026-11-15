@@ -1,9 +1,24 @@
 import { Hono } from "hono";
 import { aggregatorService } from "../services/aggregator.service";
 import { StreamCache } from "../engine/cache";
-import { parsePipeStreamUrl } from "../utils/stream-url";
+import {
+  inheritSignedQueryParams,
+  isSafeUpstreamUrl,
+  parsePipeStreamUrl,
+} from "../utils/stream-url";
 
 export const proxyRoute = new Hono();
+
+proxyRoute.options("/", (c) => {
+  return c.body(null, 204, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, Accept, Origin, Referer, Authorization, Content-Type",
+    "Access-Control-Expose-Headers":
+      "Content-Length, Content-Range, Accept-Ranges, X-Cache, X-Proxy-Active-Upstream",
+    "Access-Control-Max-Age": "86400",
+  });
+});
 
 // Micro-cache for binary video chunks (.ts, .m4s, .mp4) to shield upstreams and accelerate concurrent viewers
 // Capped at 150 segments and 50MB max memory budget with byte-aware LRU eviction
@@ -168,7 +183,7 @@ export function filterM3u8ByQuality(
   }
 
   const buildProxyLine = (rawUri: string) => {
-    const absUrl = new URL(rawUri, baseUrl).toString();
+    const absUrl = inheritSignedQueryParams(baseUrl, new URL(rawUri, baseUrl).toString());
     let p = `${proxyPath}?url=${encodeURIComponent(absUrl)}`;
     if (customReferer) p += `&referer=${encodeURIComponent(customReferer)}`;
     if (customUa) p += `&ua=${encodeURIComponent(customUa)}`;
@@ -282,9 +297,22 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
     return c.text("Invalid or missing 'url' query parameter", 400);
   }
 
+  if (!isSafeUpstreamUrl(targetUrl)) {
+    return c.json(
+      {
+        success: false,
+        error: "Blocked unsafe or private upstream URL (SSRF protection)",
+      },
+      400
+    );
+  }
+
   const candidateUrls: string[] = [targetUrl];
   if (fallbackUrl && (fallbackUrl.startsWith("http://") || fallbackUrl.startsWith("https://"))) {
-    candidateUrls.push(parsePipeStreamUrl(fallbackUrl).cleanUrl);
+    const cleanFallback = parsePipeStreamUrl(fallbackUrl).cleanUrl;
+    if (isSafeUpstreamUrl(cleanFallback)) {
+      candidateUrls.push(cleanFallback);
+    }
   }
 
   const isBinarySegment = /\.(ts|m4s|mp4|aac|cmfv|cmfa)(\?|$)/i.test(targetUrl);
@@ -390,7 +418,10 @@ proxyRoute.on(["GET", "HEAD"], "/", async (c) => {
     const proxyPath = "/api/proxy";
 
     const buildProxyLine = (rawUri: string) => {
-      const absUrl = new URL(rawUri, baseUrl).toString();
+      const absUrl = inheritSignedQueryParams(
+        baseUrl.toString(),
+        new URL(rawUri, baseUrl).toString()
+      );
       let p = `${proxyPath}?url=${encodeURIComponent(absUrl)}`;
       if (customReferer) p += `&referer=${encodeURIComponent(customReferer)}`;
       if (customUa) p += `&ua=${encodeURIComponent(customUa)}`;

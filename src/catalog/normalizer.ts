@@ -9,7 +9,11 @@ import {
   RenditionVariant,
 } from "./types";
 import { DrmHelper } from "../parsers/drm.helper";
-import { buildProxyHeaderQuery, parsePipeStreamUrl } from "../utils/stream-url";
+import {
+  buildProxyHeaderQuery,
+  parsePipeStreamUrl,
+  sanitizeHeadersForPublicDisplay,
+} from "../utils/stream-url";
 import { createHash } from "node:crypto";
 
 export interface TeamAliasEntry {
@@ -1219,36 +1223,67 @@ export function parseCanonicalDate(startTime?: string): string {
 }
 
 /**
- * Normalizes any provider timestamp into a valid ISO 8601 string
+ * Normalizes any provider timestamp into a valid ISO 8601 UTC string (`YYYY-MM-DDTHH:mm:ss.000Z`).
  */
 export function safeIsoDate(rawDate?: string): string | null {
   if (!rawDate) return null;
   const trimmed = rawDate.trim();
+  if (!trimmed) return null;
 
-  const dmyMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/);
+  // Numeric Unix epoch seconds or milliseconds
+  if (/^\d{10,13}$/.test(trimmed)) {
+    const num = Number(trimmed);
+    const ms = num < 10_000_000_000 ? num * 1000 : num;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString();
+    }
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY with optional HH:mm(:ss) and optional timezone offset
+  const dmyMatch = trimmed.match(
+    /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([+-]\d{2}):?(\d{2}))?)?$/
+  );
   if (dmyMatch) {
     const day = dmyMatch[1].padStart(2, "0");
     const month = dmyMatch[2].padStart(2, "0");
     const year = dmyMatch[3];
-    const time = dmyMatch[4]
-      ? dmyMatch[4].length === 5
-        ? `${dmyMatch[4]}:00`
-        : dmyMatch[4]
-      : "00:00:00";
-    return `${year}-${month}-${day}T${time}.000Z`;
+    const hh = (dmyMatch[4] || "00").padStart(2, "0");
+    const mm = (dmyMatch[5] || "00").padStart(2, "0");
+    const ss = (dmyMatch[6] || "00").padStart(2, "0");
+    const tzH = dmyMatch[7];
+    const tzM = dmyMatch[8];
+    const isoCandidate = `${year}-${month}-${day}T${hh}:${mm}:${ss}${
+      tzH && tzM ? `${tzH}:${tzM}` : "Z"
+    }`;
+    const parsedMs = Date.parse(isoCandidate);
+    if (!Number.isNaN(parsedMs)) {
+      return new Date(parsedMs).toISOString();
+    }
+    return `${year}-${month}-${day}T${hh}:${mm}:${ss}.000Z`;
   }
 
-  const ymdMatch = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?/);
+  // YYYY/MM/DD or YYYY-MM-DD with optional HH:mm(:ss) and optional timezone offset
+  const ymdMatch = trimmed.match(
+    /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([+-]\d{2}):?(\d{2}))?)?$/
+  );
   if (ymdMatch && !trimmed.includes("T")) {
     const year = ymdMatch[1];
     const month = ymdMatch[2].padStart(2, "0");
     const day = ymdMatch[3].padStart(2, "0");
-    const time = ymdMatch[4]
-      ? ymdMatch[4].length === 5
-        ? `${ymdMatch[4]}:00`
-        : ymdMatch[4]
-      : "00:00:00";
-    return `${year}-${month}-${day}T${time}.000Z`;
+    const hh = (ymdMatch[4] || "00").padStart(2, "0");
+    const mm = (ymdMatch[5] || "00").padStart(2, "0");
+    const ss = (ymdMatch[6] || "00").padStart(2, "0");
+    const tzH = ymdMatch[7];
+    const tzM = ymdMatch[8];
+    const isoCandidate = `${year}-${month}-${day}T${hh}:${mm}:${ss}${
+      tzH && tzM ? `${tzH}:${tzM}` : "Z"
+    }`;
+    const parsedMs = Date.parse(isoCandidate);
+    if (!Number.isNaN(parsedMs)) {
+      return new Date(parsedMs).toISOString();
+    }
+    return `${year}-${month}-${day}T${hh}:${mm}:${ss}.000Z`;
   }
 
   try {
@@ -2010,7 +2045,7 @@ export function buildRichStreamFeeds(
       network: {
         masterPlaylistUrl: rawUrl,
         edgeProxyFallbackUrl: `${proxyBaseUrl}?url=${encodeURIComponent(rawUrl)}${headerQuery}`,
-        headers: hasHeaders,
+        headers: sanitizeHeadersForPublicDisplay(hasHeaders),
       },
       provenance: {
         isMultiSource,

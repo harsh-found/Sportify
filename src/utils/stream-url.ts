@@ -214,3 +214,141 @@ export function detectStreamFormat(url: string, explicitType?: string): "DASH" |
   }
   return "HLS";
 }
+
+/**
+ * Validates that an upstream URL is safe to fetch from the edge proxy / stream inspector,
+ * blocking SSRF targets such as loopback, RFC1918 private networks, link-local / cloud metadata
+ * endpoints (169.254.169.254, metadata.google.internal), and non-HTTP(S) schemes.
+ */
+export function isSafeUpstreamUrl(rawUrl: string): boolean {
+  if (!rawUrl || typeof rawUrl !== "string") return false;
+  const trimmed = rawUrl.trim();
+  if (/^(?:playztv|livxow|sktech|sportzx|playfy|cricify):\/\//i.test(trimmed)) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (!host) return false;
+
+    if (
+      host === "metadata.google.internal" ||
+      host.endsWith(".internal") ||
+      host === "0.0.0.0" ||
+      host === "::" ||
+      host.startsWith("fe80:") ||
+      host.startsWith("fc00:") ||
+      host.startsWith("fd00:")
+    ) {
+      return false;
+    }
+
+    const portNum = parsed.port ? Number(parsed.port) : parsed.protocol === "https:" ? 443 : 80;
+    const isEphemeralTestPort = portNum >= 10000;
+
+    if (
+      host === "localhost" ||
+      host.endsWith(".localhost") ||
+      host === "::1"
+    ) {
+      return isEphemeralTestPort;
+    }
+
+    // Check IPv4 literal ranges
+    const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4Match) {
+      const a = Number(ipv4Match[1]);
+      const b = Number(ipv4Match[2]);
+      if (a === 127) return isEphemeralTestPort;
+      if (a === 0 || a === 10) return false;
+      if (a === 169 && b === 254) return false; // Link-local & cloud metadata (169.254.169.254)
+      if (a === 172 && b >= 16 && b <= 31) return false; // 172.16.0.0/12
+      if (a === 192 && b === 168) return false; // 192.168.0.0/16
+      if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT 100.64.0.0/10
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const SIGNED_CDN_QUERY_KEYS = new Set([
+  "hdnts",
+  "hdnea",
+  "token",
+  "access_token",
+  "sig",
+  "signature",
+  "hmac",
+  "auth",
+  "policy",
+  "key-pair-id",
+  "expires",
+  "exp",
+  "st",
+  "e",
+  "md5",
+  "hash",
+  "wmsauthsign",
+]);
+
+/**
+ * Inherits signed CDN query parameters (Akamai hdnts/hdnea, CloudFront Policy/Signature/Key-Pair-Id,
+ * Fastly/Flussonic token/wmsAuthSign) from a parent HLS manifest URL onto a resolved child playlist,
+ * encryption key, or segment URL when the child URL lacks those parameters.
+ */
+export function inheritSignedQueryParams(parentUrl: string, childUrl: string): string {
+  try {
+    const parentParsed = new URL(parentUrl);
+    if (!parentParsed.search) return childUrl;
+
+    const childParsed = new URL(childUrl);
+    // Only inherit onto the same origin or subdomain of the same CDN
+    if (childParsed.hostname.toLowerCase() !== parentParsed.hostname.toLowerCase()) {
+      return childUrl;
+    }
+
+    let modified = false;
+    for (const [k, v] of parentParsed.searchParams.entries()) {
+      if (SIGNED_CDN_QUERY_KEYS.has(k.toLowerCase()) && !childParsed.searchParams.has(k)) {
+        childParsed.searchParams.set(k, v);
+        modified = true;
+      }
+    }
+
+    return modified ? childParsed.toString() : childUrl;
+  } catch {
+    return childUrl;
+  }
+}
+
+/**
+ * Redacts sensitive credential headers (Authorization, Proxy-Authorization, Set-Cookie, X-Api-Key)
+ * for safe inclusion in public JSON responses while preserving standard playback headers
+ * (Referer, Origin, User-Agent, Cookie) required by native ExoPlayer/Kodi/VLC clients.
+ */
+export function sanitizeHeadersForPublicDisplay(
+  headers?: Record<string, string>
+): Record<string, string> | undefined {
+  if (!headers || Object.keys(headers).length === 0) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    const lower = k.toLowerCase();
+    if (lower === "authorization" || lower === "proxy-authorization") {
+      const scheme = v.trim().split(/\s+/)[0];
+      out[k] = scheme && scheme.length < 15 ? `${scheme} [REDACTED]` : "[REDACTED]";
+    } else if (lower === "set-cookie" || lower === "x-api-key") {
+      out[k] = "[REDACTED]";
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+

@@ -45,9 +45,9 @@ export class CricifyProvider extends AbstractBaseProvider {
 
   // Curated M3U playlists from CricifyProvider/src/main/kotlin/com/cncverse/ProviderManager.kt
   private readonly m3uMirrors = [
-    "https://raw.githubusercontent.com/Jitendra-unatti/fancode/refs/heads/main/data/fancode.m3u",
     "https://github.com/abusaeeidx/CricHd-playlists-Auto-Update-permanent/raw/main/ALL.m3u",
     "https://iptv-org.github.io/iptv/categories/sports.m3u",
+    "https://raw.githubusercontent.com/Jitendra-unatti/fancode/refs/heads/main/data/fancode.m3u",
   ];
 
   private cachedBaseUrl: string | null = null;
@@ -220,6 +220,7 @@ export class CricifyProvider extends AbstractBaseProvider {
   }
 
   async fetchEvents(): Promise<LiveEvent[]> {
+    this.checkCircuitBreaker();
     const primaryUrl = await this.getBaseUrl();
     const urlsToTry = [primaryUrl, ...this.fallbackBaseUrls.filter((u) => u !== primaryUrl)];
 
@@ -229,6 +230,7 @@ export class CricifyProvider extends AbstractBaseProvider {
         try {
           const response = await this.safeFetch(endpoint, {
             headers: { "User-Agent": "okhttp/4.12.0" },
+            ignoreCircuitBreaker: true,
           });
           const rawText = await response.text();
           let decryptedText = rawText;
@@ -259,7 +261,9 @@ export class CricifyProvider extends AbstractBaseProvider {
             if (!hasRealEvents) continue;
 
             this.cachedBaseUrl = base;
+            this.activeBaseUrl = base;
             this.baseUrlExpiresAt = Date.now() + 1800 * 1000;
+            this.recordSuccess();
 
             const liveEvents: LiveEvent[] = [];
             const pendingSlugLookups: Array<{
@@ -435,7 +439,10 @@ export class CricifyProvider extends AbstractBaseProvider {
               );
             }
 
-            if (liveEvents.length > 0) return liveEvents;
+            if (liveEvents.length > 0) {
+              this.lastEventsExtracted = liveEvents.length;
+              return liveEvents;
+            }
           }
         } catch {
           // Try next endpoint / base URL
@@ -445,7 +452,7 @@ export class CricifyProvider extends AbstractBaseProvider {
 
     // Fallback: convert M3U channels into LiveEvents
     const channels = await this.fetchChannels();
-    return channels
+    const fallbackEvents = channels
       .filter((ch) => {
         const lower = `${ch.name} ${ch.category}`.toLowerCase();
         return (
@@ -466,12 +473,17 @@ export class CricifyProvider extends AbstractBaseProvider {
         lastUpdated: new Date().toISOString(),
         sources: ch.sources,
       }));
+    this.lastEventsExtracted = fallbackEvents.length;
+    return fallbackEvents;
   }
 
   async fetchChannels(): Promise<Channel[]> {
     for (const url of this.m3uMirrors) {
       try {
-        const response = await this.safeFetch(url);
+        const response = await this.safeFetch(url, {
+          ignoreCircuitBreaker: true,
+          timeoutMs: 4000,
+        });
         const rawText = await response.text();
         let decryptedText = rawText;
 
@@ -485,7 +497,7 @@ export class CricifyProvider extends AbstractBaseProvider {
 
         const parsedItems = parseM3UPlaylist(decryptedText);
         if (parsedItems.length > 0) {
-          return parsedItems.slice(0, 80).map((item, idx) => {
+          const channels = parsedItems.slice(0, 80).map((item, idx) => {
             const source: StreamSource = {
               id: `cricify_src_${idx}`,
               provider: this.metadata.id,
@@ -508,6 +520,8 @@ export class CricifyProvider extends AbstractBaseProvider {
               sources: [source],
             };
           });
+          this.lastChannelsExtracted = channels.length;
+          return channels;
         }
       } catch {
         // Try next mirror
